@@ -76,7 +76,7 @@ export async function run(argv: string[], deps: CliDeps = defaultDeps): Promise<
       deps.io.err(`Error: ${err.message}`);
       if (/maxResponseBytes/.test(err.message)) {
         deps.io.err(
-          "Hint: the response exceeded the size cap. Narrow with --count/--filter-* " +
+          "Hint: the response exceeded the size cap. Narrow with --from/--count " +
             "or raise --max-response-bytes <n> (0 = unlimited).",
         );
       }
