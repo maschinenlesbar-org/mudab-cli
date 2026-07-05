@@ -105,6 +105,17 @@ test("--max-retries above the sane maximum is rejected client-side", async () =>
   assert.equal(cli.mt.calls.length, 0);
 });
 
+test("a redirect from a misconfigured base URL exits 2 (usage)", async () => {
+  const cli = makeCli(() => ({
+    status: 301,
+    headers: { location: "https://www.mudab.de/x" },
+    body: Buffer.alloc(0),
+  }));
+  const code = await run(["stations", "--count", "1"], cli.deps);
+  assert.equal(code, 2);
+  assert.match(cli.err.join("\n"), /canonical base URL/);
+});
+
 test("an unknown command exits 2", async () => {
   const cli = makeCli(() => jsonResponse({}));
   assert.equal(await run(["boguscmd"], cli.deps), 2);

@@ -70,6 +70,10 @@ export async function run(argv: string[], deps: CliDeps = defaultDeps): Promise<
     if (err instanceof MudabApiError) {
       deps.io.err(`Error: ${err.message}`);
       if (err.status === 404) return EXIT.NOT_FOUND;
+      // A 3xx means the base URL redirected (e.g. the legacy MUDABAnwendung path).
+      // The canonical host answers directly, so this is a base-URL misconfiguration
+      // — a usage error, not a generic API failure.
+      if (err.status >= 300 && err.status < 400) return EXIT.USAGE;
       return EXIT.OTHER;
     }
     if (err instanceof MudabNetworkError) {
