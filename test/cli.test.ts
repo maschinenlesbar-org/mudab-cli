@@ -91,6 +91,13 @@ test("a bare invocation prints help and exits 0", async () => {
   assert.match(cli.out.join("\n"), /Usage: mudab/);
 });
 
+test("--max-retries above the sane maximum is rejected client-side", async () => {
+  const cli = makeCli(() => jsonResponse(fx.stations));
+  const code = await run(["--max-retries", "1000000", "stations"], cli.deps);
+  assert.equal(code, 2);
+  assert.equal(cli.mt.calls.length, 0);
+});
+
 test("an unknown command exits 2", async () => {
   const cli = makeCli(() => jsonResponse({}));
   assert.equal(await run(["boguscmd"], cli.deps), 2);

@@ -29,6 +29,16 @@ export function parseIntArg(value: string): number {
   return n;
 }
 
+/** Build a commander value-parser for an integer constrained to [min, max]. */
+export function parseBoundedInt(min: number, max: number): (value: string) => number {
+  return (value: string) => {
+    const n = parseIntArg(value);
+    if (n < min) throw new InvalidArgumentError(`Must be >= ${min}.`);
+    if (n > max) throw new InvalidArgumentError(`Must be <= ${max}.`);
+    return n;
+  };
+}
+
 /**
  * commander value-parser for a value that ends up in an HTTP header (User-Agent).
  * Rejects control characters — a CR/LF (or other C0/DEL byte) would otherwise
