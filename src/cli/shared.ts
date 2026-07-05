@@ -97,7 +97,10 @@ export function addListOptions(cmd: Command): Command {
   return cmd
     .option("--from <n>", "skip this many rows (range.from)", parseIntArg)
     .option("--count <n>", `max rows to return (default ${DEFAULT_COUNT})`, parseIntArg)
-    .option("--all", "return the whole table (omit the range — can be very large)");
+    .option(
+      "--all",
+      "return the whole table (omit the range — can be very large; not combinable with --from/--count)",
+    );
 }
 
 /**
