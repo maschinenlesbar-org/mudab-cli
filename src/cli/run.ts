@@ -62,7 +62,7 @@ export async function run(argv: string[], deps: CliDeps = defaultDeps): Promise<
       // the catch-all).
       return err.exitCode === 0 ? 0 : EXIT.USAGE;
     }
-    // Client-side validation (e.g. a partial --filter) — a usage error.
+    // Client-side validation (e.g. --all combined with --from/--count) — a usage error.
     if (err instanceof MudabValidationError) {
       deps.io.err(`Error: ${err.message}`);
       return EXIT.USAGE;
