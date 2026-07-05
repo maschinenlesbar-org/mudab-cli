@@ -1,0 +1,24 @@
+{
+  "name": "mudab",
+  "version": "0.1.0",
+  "description": "German marine-monitoring skills powered by the mudab-cli (MUDAB Meeresumweltdatenbank API).",
+  "author": {
+    "name": "Sebastian Schürmann",
+    "email": "sebs@2xs.org"
+  },
+  "license": "AGPL-3.0-or-later",
+  "repository": "https://github.com/maschinenlesbar-org/mudab-cli",
+  "homepage": "https://github.com/maschinenlesbar-org/mudab-cli#readme",
+  "keywords": [
+    "mudab",
+    "meeresumweltdatenbank",
+    "marine",
+    "monitoring",
+    "umweltbundesamt",
+    "bafg",
+    "nordsee",
+    "ostsee",
+    "germany",
+    "bund.dev"
+  ]
+}

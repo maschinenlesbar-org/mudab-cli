@@ -1,0 +1,66 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import http from "node:http";
+import { nodeHttpTransport } from "../src/client/http.js";
+import { MudabNetworkError } from "../src/client/errors.js";
+
+/** Start a throwaway loopback server for one test and return its base URL. */
+async function withServer(
+  handler: http.RequestListener,
+  fn: (baseUrl: string) => Promise<void>,
+): Promise<void> {
+  const server = http.createServer(handler);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const addr = server.address();
+  if (addr === null || typeof addr === "string") throw new Error("no address");
+  try {
+    await fn(`http://127.0.0.1:${addr.port}`);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
+
+test("performs a real POST with a body and returns status, headers and body", async () => {
+  await withServer(
+    (req, res) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (c: Buffer) => chunks.push(c));
+      req.on("end", () => {
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ method: req.method, received: Buffer.concat(chunks).toString("utf8") }));
+      });
+    },
+    async (baseUrl) => {
+      const resp = await nodeHttpTransport({
+        method: "POST",
+        url: `${baseUrl}/STATION_SMALL`,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ range: { count: 1 } }),
+      });
+      assert.equal(resp.status, 200);
+      assert.deepEqual(JSON.parse(resp.body.toString("utf8")), {
+        method: "POST",
+        received: '{"range":{"count":1}}',
+      });
+    },
+  );
+});
+
+test("rejects an unsupported protocol with MudabNetworkError", async () => {
+  await assert.rejects(
+    () => nodeHttpTransport({ method: "POST", url: "ftp://example.test/x" }),
+    MudabNetworkError,
+  );
+});
+
+test("enforces maxResponseBytes", async () => {
+  await withServer(
+    (_req, res) => res.end("x".repeat(1000)),
+    async (baseUrl) => {
+      await assert.rejects(
+        () => nodeHttpTransport({ method: "POST", url: baseUrl, maxResponseBytes: 10 }),
+        MudabNetworkError,
+      );
+    },
+  );
+});
