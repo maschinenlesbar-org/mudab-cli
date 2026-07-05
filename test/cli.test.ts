@@ -77,6 +77,13 @@ test("compartments works offline, needs no request, and lists the codes", async 
   );
 });
 
+test("an empty --base-url is rejected before any request", async () => {
+  const cli = makeCli(() => jsonResponse(fx.stations));
+  const code = await run(["--base-url", "", "stations"], cli.deps);
+  assert.equal(code, 2);
+  assert.equal(cli.mt.calls.length, 0);
+});
+
 test("a control character in --user-agent is rejected before any request", async () => {
   const cli = makeCli(() => jsonResponse(fx.stations));
   const code = await run(["stations", "--user-agent", "bad\r\nX-Injected: 1"], cli.deps);

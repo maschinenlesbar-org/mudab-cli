@@ -8,7 +8,7 @@ import { Command } from "commander";
 import type { CliDeps } from "./io.js";
 import { defaultIO } from "./io.js";
 import { MudabClient } from "../client/client.js";
-import { parseIntArg, parseBoundedInt, parseHeaderValue } from "./shared.js";
+import { parseIntArg, parseBoundedInt, parseHeaderValue, parseNonEmpty } from "./shared.js";
 import { registerCommands } from "./commands/list.js";
 
 /**
@@ -49,7 +49,12 @@ export function buildProgram(deps: CliDeps = defaultDeps): Command {
         "so filter with jq on the --compact output.",
     )
     .version(VERSION)
-    .option("--base-url <url>", "API base URL", "https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements")
+    .option(
+      "--base-url <url>",
+      "API base URL",
+      parseNonEmpty,
+      "https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements",
+    )
     .option("--timeout <ms>", "per-request timeout in ms (0 = no timeout)", parseIntArg)
     .option("--user-agent <ua>", "User-Agent header value", parseHeaderValue)
     .option("--max-retries <n>", "retries for transient 429/503 responses (0..10)", parseBoundedInt(0, 10))

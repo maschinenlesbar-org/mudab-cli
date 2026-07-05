@@ -29,6 +29,14 @@ export function parseIntArg(value: string): number {
   return n;
 }
 
+/** commander value-parser: a non-empty (after trimming) string. */
+export function parseNonEmpty(value: string): string {
+  if (value.trim() === "") {
+    throw new InvalidArgumentError("Expected a non-empty value.");
+  }
+  return value;
+}
+
 /** Build a commander value-parser for an integer constrained to [min, max]. */
 export function parseBoundedInt(min: number, max: number): (value: string) => number {
   return (value: string) => {
