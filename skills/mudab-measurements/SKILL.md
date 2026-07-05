@@ -32,7 +32,7 @@ This skill drives the `mudab` command. **Before anything else, validate it is av
 
 ## The size problem — page, do not dump
 
-`measurements` is a **very large** table (millions of rows). **Never** run
+`measurements` is a **very large** table (hundreds of thousands of rows). **Never** run
 `mudab measurements --all` blindly — it can exceed the response-size cap (raise it
 with `--max-response-bytes` only if you truly mean to). Instead page:
 
@@ -60,7 +60,7 @@ mudab plc-measurements --all --compact \
 
 - **No server-side filter/sort** — every selection above is `jq`. If a user expects a
   `--station`/`--parameter` flag, explain it does not exist and filter client-side.
-- **`measurements` is millions of rows** — always `--from/--count` page it; only `--all`
+- **`measurements` is hundreds of thousands of rows** — always `--from/--count` page it; only `--all`
   the small tables (`plc-measurements`, stations, parameters).
 - **`VALUE_MS` is a string, `VALUE` (PLC) is a number** — cast before arithmetic
   (`(.VALUE_MS|tonumber)`), and expect the odd non-numeric flag.

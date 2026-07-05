@@ -19,7 +19,7 @@ They compose: **stations → measurements**, or **parameters → measurements**.
 - **No API key** — the MUDAB API is open.
 - **Note:** the API does **no server-side filtering or sorting** (its spec's
   `filter`/`orderby` are ignored by the live server) — filter with `jq` on `--compact`
-  output. The `measurements` table is millions of rows; page it with `--from`/`--count`
+  output. The `measurements` table is hundreds of thousands of rows; page it with `--from`/`--count`
   rather than `--all`.
 
 ## Installing the plugin
