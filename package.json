@@ -1,6 +1,6 @@
 {
   "name": "@maschinenlesbar.org/mudab-cli",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "TypeScript API client and CLI for the MUDAB (Meeresumweltdatenbank) API — German marine-monitoring data (stations, parameters, measurements)",
   "type": "module",
   "bin": {
