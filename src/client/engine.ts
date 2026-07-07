@@ -43,6 +43,29 @@ export interface EngineOptions {
 
 const DEFAULT_MAX_RESPONSE_BYTES = 100 * 1024 * 1024;
 
+/** Longest error `detail` we keep — a hostile body must not fill the terminal. */
+const MAX_DETAIL_LENGTH = 200;
+
+/**
+ * Strip C0/C1 control characters (including DEL) out of a string that originates
+ * in an attacker-controlled response — the error `detail`. `JSON.parse` decodes a
+ * unicode escape such as backslash-u-001b in an error body into a real ESC byte,
+ * so without this a hostile or MITM'd endpoint could drive ANSI/OSC escape
+ * sequences into the user's terminal when the message is printed to stderr.
+ * The success path is already safe (`JSON.stringify` escapes these), so this only
+ * needs to cover text that flows into an error message. Checked by char code so
+ * the source stays free of control bytes.
+ */
+function sanitizeServerText(text: string): string {
+  let out = "";
+  for (const ch of text) {
+    const n = ch.codePointAt(0) ?? 0;
+    if (n <= 8 || (n >= 0x0b && n <= 0x1f) || (n >= 0x7f && n <= 0x9f)) continue;
+    out += ch;
+  }
+  return out;
+}
+
 const realSleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -150,15 +173,25 @@ export class RequestEngine {
     } else {
       try {
         const parsed = JSON.parse(text) as { detail?: unknown; message?: unknown; error?: unknown };
-        if (typeof parsed?.detail === "string") detail = parsed.detail;
-        else if (typeof parsed?.message === "string") detail = parsed.message;
-        else if (typeof parsed?.error === "string") detail = parsed.error;
+        let raw: string | undefined;
+        if (typeof parsed?.detail === "string") raw = parsed.detail;
+        else if (typeof parsed?.message === "string") raw = parsed.message;
+        else if (typeof parsed?.error === "string") raw = parsed.error;
+        if (raw !== undefined) {
+          // The parsed string is attacker-controlled: strip control bytes so ANSI/OSC
+          // escapes can't reach the terminal, and cap length so a hostile body can't
+          // flood stderr.
+          const clean = sanitizeServerText(raw);
+          detail = clean.length > MAX_DETAIL_LENGTH ? `${clean.slice(0, MAX_DETAIL_LENGTH)}…` : clean;
+        }
       } catch {
         // Not JSON. Surface a short, whitespace-collapsed snippet of a textual
         // body so the failure isn't context-free; skip HTML pages (start with "<").
-        const snippet = text.trim().replace(/\s+/g, " ");
+        // Strip control bytes too — `\s+` collapses whitespace but leaves ESC/C0
+        // intact, so a hostile plain-text body could still smuggle ANSI/OSC escapes.
+        const snippet = sanitizeServerText(text.trim().replace(/\s+/g, " "));
         if (snippet.length > 0 && !snippet.startsWith("<")) {
-          detail = snippet.length > 200 ? `${snippet.slice(0, 200)}…` : snippet;
+          detail = snippet.length > MAX_DETAIL_LENGTH ? `${snippet.slice(0, MAX_DETAIL_LENGTH)}…` : snippet;
         }
       }
     }

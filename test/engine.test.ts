@@ -60,6 +60,54 @@ test("a non-JSON (plain-text) error body is surfaced as the detail", async () =>
   );
 });
 
+test("control characters in a JSON error detail are stripped before reaching the message", async () => {
+  const esc = String.fromCharCode(0x1b);
+  const bel = String.fromCharCode(0x07);
+  const hostile = `${esc}]0;pwned${bel}${esc}[2Jcleared`;
+  const mt = makeMockTransport(() => jsonResponse({ detail: hostile }, 403));
+  const e = new RequestEngine({ transport: mt.transport });
+  await assert.rejects(
+    () => e.postJson("/x", {}),
+    (err) => {
+      if (!(err instanceof MudabApiError) || err.status !== 403) return false;
+      // No C0/C1/DEL byte survives into the message that would be printed to stderr.
+      for (const ch of err.message) {
+        const n = ch.charCodeAt(0);
+        if (n <= 8 || (n >= 0x0b && n <= 0x1f) || (n >= 0x7f && n <= 0x9f)) return false;
+      }
+      // The harmless text is preserved.
+      return err.message.includes("pwned") && err.message.includes("cleared");
+    },
+  );
+});
+
+test("an over-long JSON error detail is capped", async () => {
+  const long = "A".repeat(500);
+  const mt = makeMockTransport(() => jsonResponse({ message: long }, 400));
+  const e = new RequestEngine({ transport: mt.transport });
+  await assert.rejects(
+    () => e.postJson("/x", {}),
+    (err) => err instanceof MudabApiError && err.message.includes("…") && !err.message.includes("A".repeat(300)),
+  );
+});
+
+test("control characters in a plain-text error body are stripped too", async () => {
+  const esc = String.fromCharCode(0x1b);
+  const mt = makeMockTransport(() => rawResponse(`boom${esc}[2J`, "text/plain", 500));
+  const e = new RequestEngine({ transport: mt.transport });
+  await assert.rejects(
+    () => e.postJson("/x", {}),
+    (err) => {
+      if (!(err instanceof MudabApiError) || err.status !== 500) return false;
+      for (const ch of err.message) {
+        const n = ch.charCodeAt(0);
+        if (n <= 8 || (n >= 0x0b && n <= 0x1f) || (n >= 0x7f && n <= 0x9f)) return false;
+      }
+      return err.message.includes("boom");
+    },
+  );
+});
+
 test("a 3xx is NOT followed and hints at the canonical base URL", async () => {
   let calls = 0;
   const mt = makeMockTransport(() => {
