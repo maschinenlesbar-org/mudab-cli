@@ -1,5 +1,7 @@
 # mudab-cli
 
+**Website:** [English](https://maschinenlesbar-org.github.io/mudab-cli/) · [Deutsch](https://maschinenlesbar-org.github.io/mudab-cli/de/) — command reference, guides and API docs
+
 A tiny, dependency-light **TypeScript client + CLI** for the **MUDAB**
 (Meeresumweltdatenbank — the German marine environment database) REST API:
 marine-monitoring data from the coastal Bundesländer and research institutions,
