@@ -1,6 +1,6 @@
 # Skills
 
-`mudab-cli` ships **Claude Code Agent Skills** as a plugin marketplace, so Claude can
+`mudab-cli` ships **Claude Code Agent Skills** as a Claude Code plugin, so Claude can
 drive the `mudab` CLI for common marine-monitoring tasks. The skills **validate** that
 the `mudab` CLI is on your PATH and tell you if it is missing — they never install
 anything.
@@ -24,10 +24,18 @@ They compose: **stations → measurements**, or **parameters → measurements**.
 
 ## Installing the plugin
 
-This repo is a Claude Code plugin marketplace (`.claude-plugin/marketplace.json` +
-`.claude-plugin/plugin.json` + `skills/`). Add it as a marketplace in Claude Code to
-enable the three skills. The `skills/` and `.claude-plugin/` files are **not** shipped
-in the npm tarball — the published package is the client/CLI only.
+This repo is a Claude Code plugin (`.claude-plugin/plugin.json` + `skills/`),
+published as `mudab` in the
+[maschinenlesbar.org plugin marketplace](https://github.com/maschinenlesbar-org/plugins).
+Install it inside Claude Code to enable the three skills:
+
+```
+/plugin marketplace add maschinenlesbar-org/plugins
+/plugin install mudab@maschinenlesbar
+```
+
+The `skills/` and `.claude-plugin/` files are **not** shipped in the npm tarball — the
+published package is the client/CLI only.
 
 The data these skills surface is the providers' (BfG / UBA and the datenhaltende
 Bundesländer/Institutionen), under terms that are **not** stated as open — see
