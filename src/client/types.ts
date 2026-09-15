@@ -176,8 +176,8 @@ export interface OrderBy {
 
 /**
  * The request body shared by every MUDAB endpoint. All fields are optional; an
- * empty body returns the whole table (which for measurements is enormous — always
- * send a `range`).
+ * empty body returns the whole table (for measurements ~187,000 rows / ~42 MB on
+ * 2026-09-15 — send a `range` unless you mean it).
  *
  * IMPORTANT — verified against the live API: only `range` is honoured. Despite the
  * OpenAPI spec advertising every endpoint as a "filterbare Liste", the live server

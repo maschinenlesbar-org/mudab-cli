@@ -57,9 +57,9 @@ mudab stations --count 5
 mudab parameters --compartment wasser --all --compact \
   | jq '[.[] | select(.PARAM_NAME | test("mercury";"i"))]'
 
-# Page through the measurements table (never --all it)
-mudab measurements --from 0 --count 200 --compact > page1.json
-mudab measurements --from 200 --count 200 --compact > page2.json
+# Look at a few measurement rows, then take the whole table once and filter it
+mudab measurements --from 0 --count 5 --compact
+mudab measurements --all --compact | jq '[.[] | select(.STATNAME_ST=="OMMVZBA15")] | length'
 
 # Phosphorus river loads for Mecklenburg (LAND_CD "MV")
 mudab plc-measurements --all --compact \
@@ -78,8 +78,10 @@ mudab plc-measurements --all --compact \
 
 ## Notes
 
-- **`measurements` is enormous.** Omitting a range returns the whole table; `--all`
-  on it can blow past `--max-response-bytes`. Page it with `--from`/`--count`.
+- **`measurements` is the largest table.** On 2026-09-15 `--all` returned ~187,000 rows,
+  ~42 MB, in about 10 s, under the default 100 MiB `--max-response-bytes`. The server
+  cannot filter, so any selection needs the whole table: fetch it once and filter the
+  result. If it outgrows the cap (exit 6), raise `--max-response-bytes`.
 - **A `range` always sends `from`.** The server answers a count-only range with an
   HTTP 500, so the CLI always includes `from` (default 0).
 - The data is © its providers — see [DATA_LICENSE.md](DATA_LICENSE.md); terms are not

@@ -19,8 +19,9 @@ They compose: **stations → measurements**, or **parameters → measurements**.
 - **No API key** — the MUDAB API is open.
 - **Note:** the API does **no server-side filtering or sorting** (its spec's
   `filter`/`orderby` are ignored by the live server) — filter with `jq` on `--compact`
-  output. The `measurements` table is hundreds of thousands of rows; page it with `--from`/`--count`
-  rather than `--all`.
+  output. Because of that, selecting from a table means fetching all of it: `measurements`
+  is the largest (~187,000 rows, ~42 MB with `--all` on 2026-09-15, under the default
+  100 MiB cap), so the skills fetch it once per task rather than paging it.
 
 ## Installing the plugin
 

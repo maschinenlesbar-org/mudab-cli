@@ -61,7 +61,7 @@ OpenAPI spec (`bundesAPI/mudab-api`) is unreliable, so trust the live behaviour:
 | **`range` requires `from`** | A count-only range (`{count}` without `from`) is answered with **HTTP 500**. | `shared.ts` `buildFilterRequest` always sends `from` (default 0) |
 | **`filter` / `orderby` ignored** | Despite every endpoint being a "filterbare Liste", the live server **ignores** filter and orderby — a filter that should match nothing still returns the full page. | The CLI exposes NO filter/sort options; `FilterRequest` documents the no-op |
 | **`Compartment` enum incomplete** | Spec lists `BL/CW/CS/CF`; the data also contains `MM`. | `types.ts` types `Compartment` as an open `string` |
-| **Empty body** | Returns the WHOLE table (measurements ≈ hundreds of thousands of rows). | CLI defaults `range.count` to 100; `--all` omits the range |
+| **Empty body** | Returns the WHOLE table (measurements ≈ 187,000 rows / 42 MB on 2026-09-15). | CLI defaults `range.count` to 100; `--all` omits the range |
 
 Redirects are **not** followed (a 3xx surfaces as an error with a hint to use the
 canonical base URL) — following a cross-origin POST redirect blindly is a footgun,
