@@ -52,8 +52,9 @@ const MAX_DETAIL_LENGTH = 200;
  * unicode escape such as backslash-u-001b in an error body into a real ESC byte,
  * so without this a hostile or MITM'd endpoint could drive ANSI/OSC escape
  * sequences into the user's terminal when the message is printed to stderr.
- * The success path is already safe (`JSON.stringify` escapes these), so this only
- * needs to cover text that flows into an error message. Checked by char code so
+ * This only needs to cover text that flows into an error message: the CLI's JSON
+ * output is escaped separately (`escapeControlChars` in cli/shared.ts), as
+ * `JSON.stringify` alone leaves DEL and the C1 range raw. Checked by char code so
  * the source stays free of control bytes.
  */
 function sanitizeServerText(text: string): string {

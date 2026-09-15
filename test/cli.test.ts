@@ -121,6 +121,21 @@ test("an unknown command exits 2", async () => {
   assert.equal(await run(["boguscmd"], cli.deps), 2);
 });
 
+test("DEL and C1 control characters in server data are escaped in the JSON output", async () => {
+  const controls = String.fromCharCode(0x7f, 0x85, 0x9b) + "2J";
+  const row = { ...fx.stations.V_STATION_SMALL[0], NAME_PS: `OMO${controls}`, COMPT_DS: String.fromCharCode(0x1b) + "[31m" };
+  const served = { V_STATION_SMALL: [row] };
+  for (const format of [[], ["--compact"]]) {
+    const cli = makeCli(() => jsonResponse(served));
+    assert.equal(await run([...format, "stations"], cli.deps), 0);
+    const text = cli.out.join("\n");
+    const raw = [...text].filter((c) => c.charCodeAt(0) < 0x20 ? c !== "\n" : c.charCodeAt(0) >= 0x7f && c.charCodeAt(0) <= 0x9f);
+    assert.deepEqual(raw, [], format.join(" "));
+    assert.match(text, /OMO\\u007f\\u0085\\u009b2J/);
+    assert.deepEqual(JSON.parse(text), served.V_STATION_SMALL);
+  }
+});
+
 test("--compact prints single-line JSON", async () => {
   const cli = makeCli(() => jsonResponse(fx.stations));
   await run(["--compact", "stations"], cli.deps);
