@@ -29,7 +29,7 @@ This skill drives the `mudab` command. **Before anything else, validate it is av
 |---|---|---|
 | `mudab stations` | measurement stations (STATION_SMALL) | where samples are taken; has `STATNAME_ST`, `STATIONTYPE_ST`, `COMPT_DS` |
 | `mudab project-stations` | project stations (PROJECTSTATION_SMALL) | the monitoring project a station belongs to; has `NAME_PS`, `REGION` (Nordsee/Ostsee), `INSTITUT` |
-| `mudab plc-stations` | HELCOM PLC stations (V_PLC_STATION) | river-mouth load-monitoring stations; has `STATION_NAME`, `STATION_CODE`, `LAND_CD`, `ST_LAT`/`ST_LON` |
+| `mudab plc-stations` | HELCOM PLC stations (V_PLC_STATION) | Baltic load-monitoring points: river stations, municipal treatment plants and unmonitored-area pseudo-stations (`MON_TYPE`); has `STATION_NAME`, `STATION_CODE`, `LAND_CD`, `ST_LAT`/`ST_LON` |
 
 ## Compartments (COMPT_DS)
 
@@ -53,10 +53,11 @@ Because the API cannot filter, fetch a page and filter with `jq`:
 mudab project-stations --all --compact | jq '[.[] | select(.REGION=="Nordsee" and .INSTITUT=="BSH")]'
 
 # HELCOM PLC river stations in Mecklenburg-Vorpommern (LAND_CD "MV"), with coordinates
-mudab plc-stations --all --compact | jq '[.[] | select(.LAND_CD=="MV") | {STATION_NAME, STATION_CODE, ST_LAT, ST_LON}]'
+mudab plc-stations --all --compact \
+  | jq '[.[] | select(.LAND_CD=="MV" and .MON_TYPE=="MON_RIVER_LOAD") | {STATION_NAME, STATION_CODE, ST_LAT, ST_LON}]'
 
-# Measurement stations in the biology compartment
-mudab stations --all --compact | jq '[.[] | select(.COMPT_DS=="BL")]'
+# Measurement stations in the biology compartment (unique: the table repeats rows)
+mudab stations --all --compact | jq '[.[] | select(.COMPT_DS=="BL")] | unique'
 ```
 
 ## Traps
@@ -64,7 +65,18 @@ mudab stations --all --compact | jq '[.[] | select(.COMPT_DS=="BL")]'
 - **No server-side filter/sort.** Never present `--filter`-style options — they don't
   exist; do the selection in `jq`.
 - **`stations` and `project-stations` are different tables** joined by `NAME_PS`
-  (the project-station name). A measurement station's `NAME_PS` points at its project.
+  (the project-station name). A measurement station's `NAME_PS` points at its project,
+  but the join is not one-to-one: on 2026-09-15 `project-stations` had 1,948 rows for
+  1,862 names, and 8 names carry conflicting `REGION`/`INSTITUT` (`L1` is BSH/Nordsee and
+  IOW/Ostsee, `Darss Sill` BSH and IOW, `Cuxhaven` WGEHH and DENI, some with `INSTITUT`
+  `null`). Report every match for such a name instead of picking one. Many project
+  stations have no measurement station at all (e.g. every `BFN` row).
+- **`stations` repeats rows.** It had 83,916 rows but only 68,571 distinct ones
+  (2026-09-15), so counts of rows overstate stations. Apply `unique` (or count distinct
+  `STATNAME_ST`) before counting. At ~9 MB, `stations --all` is fine to fetch once.
+- **PLC stations are not all rivers.** `MON_TYPE` is `MON_RIVER_LOAD`, `MUNCP_FL_LD`
+  (municipal treatment plants), `STAT_FL_CONC` (flow gauges) or `UNMONITORED` (two
+  pseudo-stations with coordinates 0/0). Filter on it when the user means rivers.
 - **Region lives on project stations** (`REGION`), not on measurement stations.
 - **Labels are German** (`Nordsee`, `Ostsee`) — keep them verbatim.
 - Hand off to **mudab-parameters** (what is measured) or **mudab-measurements** (values).
