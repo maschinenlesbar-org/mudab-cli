@@ -13,7 +13,7 @@ Each command lists one dataset and prints a JSON array of rows to stdout.
 | Option | Description |
 |---|---|
 | `--base-url <url>` | API base URL (default the canonical `geoportal.bafg.de` MUDAB base) |
-| `--timeout <ms>` | per-request timeout in ms (0 = no timeout) |
+| `--timeout <ms>` | time limit per request in ms, whole response included (0 = no timeout) |
 | `--user-agent <ua>` | User-Agent header value |
 | `--max-retries <n>` | retries for transient 429/503 responses |
 | `--max-response-bytes <n>` | cap the response body size in bytes (0 = unlimited; default 100 MiB) |
