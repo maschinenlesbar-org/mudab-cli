@@ -34,31 +34,42 @@ mudab parameters --compartment biologie# biology only  (BL)
 mudab plc-parameters                   # parameters measured at HELCOM PLC river stations
 ```
 
-The whole parameter table is small (~900 rows), so `--all` is fine here (unlike
-measurements). Each row: `PARAMETER` (abbreviation, e.g. `HG` for mercury),
-`PARAM_NAME` (e.g. "Mercury"), `PARAMETERGRUPPE`/`PARAMGROUP_NAME` (the group, e.g.
-"Metals"), and `COMPT_DS` (compartment).
+The parameter tables are small (at most ~1,250 rows on 2026-09-15), so `--all` is fine. Each
+row: `PARAMETER` (abbreviation, e.g. `HG` for mercury), `PARAM_NAME` (e.g. "mercury"),
+`PARAMETERGRUPPE`/`PARAMGROUP_NAME` (the group, e.g. "Metals and metalloids"; can be
+`null`), and `COMPT_DS` (compartment).
 
 ## Recipes
 
 ```bash
-# Is mercury measured, and in which compartments?
-mudab parameters --all --compact | jq '[.[] | select(.PARAM_NAME | test("mercury";"i")) | {PARAMETER, PARAM_NAME, COMPT_DS}]'
+# Is mercury measured, and in which compartments? Ask each compartment endpoint —
+# the combined table lists a code under one compartment only (see Traps)
+for c in wasser sediment biota biologie; do
+  mudab parameters --compartment "$c" --all --compact \
+    | jq -c --arg c "$c" '.[] | select(.PARAM_NAME | test("mercury";"i")) | {compartment: $c, PARAMETER, PARAM_NAME, COMPT_DS}'
+done
 
-# All nutrient parameters (group name contains "Nutrient")
-mudab parameters --all --compact | jq '[.[] | select(.PARAMGROUP_NAME | test("nutrient";"i")) | {PARAMETER, PARAM_NAME}]'
+# All nutrient parameters (group name contains "Nutrient"; the group can be null)
+mudab parameters --all --compact | jq '[.[] | select((.PARAMGROUP_NAME // "") | test("nutrient";"i")) | {PARAMETER, PARAM_NAME}]'
 
 # The distinct parameter groups in the sediment compartment
-mudab parameters --compartment sediment --all --compact | jq '[.[].PARAMGROUP_NAME] | unique'
+mudab parameters --compartment sediment --all --compact | jq '[.[].PARAMGROUP_NAME | select(. != null)] | unique'
 ```
 
 ## Traps
 
 - **No server-side filter.** `--compartment` is the ONLY narrowing the server does
   (it routes to a different endpoint); everything else is `jq`.
-- **A parameter can appear in several compartments** — the same substance has one row
-  per compartment (different `COMPT_DS`). De-duplicate on `PARAMETER` if you only want
-  the substance list.
+- **The combined table lists each code once.** `mudab parameters` without
+  `--compartment` has (almost) one row per `PARAMETER`, with one `COMPT_DS`: `HG` (mercury)
+  and `PFOS` appear only under `CF`, although the `wasser`, `sediment` and `biota`
+  endpoints all list them. To say in which compartments a substance is measured, query
+  each `--compartment` (the recipe above). Across the four compartment lists a code
+  repeats once per compartment, so de-duplicate on `PARAMETER` for a plain substance list.
+  Some codes appear only in the combined table (e.g. `HGTOR`, `COMPT_DS` `MM`).
+- **`PARAMGROUP_NAME` can be `null`** (119 of 889 combined rows on 2026-09-15, mostly
+  `*deprecated*` parameters). `test()` on `null` aborts `jq`, so guard it with
+  `(.PARAMGROUP_NAME // "")`, and drop nulls before listing groups.
 - **Names are English-ish scientific labels; groups mix English and codes** — keep
   `PARAMETER`/`PARAM_NAME` verbatim; they are what the measurement rows key on.
 - **PLC parameters are a separate list** (`plc-parameters`) tied to river-load stations,
