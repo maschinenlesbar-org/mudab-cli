@@ -69,8 +69,8 @@ export interface ParameterValue {
   DATE_STM?: string;
   /** Measurement time, HHMM. */
   TIME_STM?: string;
-  /** The measured value (a string in the source data). */
-  VALUE_MS?: string;
+  /** The measured value, a JSON number in live responses. */
+  VALUE_MS?: number;
 }
 
 /** `V_PLC_STATION` item — a HELCOM PLC (Pollution Load Compilation) station. */

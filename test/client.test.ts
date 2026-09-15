@@ -40,6 +40,15 @@ test("parameters(_, 'wasser') routes to the compartment endpoint", async () => {
   assert.equal(new URL(mt.last().url).pathname.endsWith("/MV_PARAMETER_WASSER"), true);
 });
 
+test("measurements() POSTs to /MV_STATION_MSMNT and keeps VALUE_MS a number", async () => {
+  const { client, mt } = clientFor(fx.measurements);
+  const rows = await client.measurements({ range: { from: 0, count: 1 } });
+  assert.equal(new URL(mt.last().url).pathname.endsWith("/MV_STATION_MSMNT"), true);
+  const value: number | undefined = rows[0]?.VALUE_MS;
+  assert.equal(value, 11.8);
+  assert.equal(typeof value, "number");
+});
+
 test("plcStations() POSTs to /V_PLC_STATION", async () => {
   const { client, mt } = clientFor(fx.plcStations);
   const rows = await client.plcStations();

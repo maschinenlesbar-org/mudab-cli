@@ -52,3 +52,19 @@ export const plcStations = {
 
 /** An empty (but valid) result — a filter that matched nothing. */
 export const empty = { MV_PARAMETER: [] };
+
+/** A station measurement as the live API returns it: `VALUE_MS` is a JSON number. */
+export const measurements = {
+  MV_STATION_MSMNT: [
+    {
+      metadataid: 39,
+      STATNAME_ST: "OMMVZBA15",
+      PARAMETERID_PM: "APSurTemp THRNFNON degC IFAG",
+      STATNAME_DATE_TIME: "OMMVZBA15 20111019 0849",
+      PARAMCODE_PM: "SurTemp",
+      DATE_STM: "20111019",
+      TIME_STM: "0849",
+      VALUE_MS: 11.8,
+    },
+  ],
+};
