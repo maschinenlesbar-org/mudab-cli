@@ -7,8 +7,10 @@ description: >
   temperature measurements from a Baltic station", "what are the nutrient loads of
   German rivers into the sea?", "pull MUDAB measurement values for a station", or
   wants actual numbers (dates, values, units), not just station or parameter lists.
-version: 1.0.0
-userInvocable: true
+compatibility: >
+  Requires the `mudab` CLI (npm package @maschinenlesbar.org/mudab-cli) on PATH,
+  installed by the user; the skill never installs it. Uses jq for JSON
+  filtering. Network access to geoportal.bafg.de.
 ---
 
 # MUDAB Measurements
@@ -21,6 +23,8 @@ river flow).
 ## Tooling
 
 This skill drives the `mudab` command. **Before anything else, validate it is available** — run `command -v mudab` (or `mudab --version`). If it is not on your PATH, STOP and inform the user that the `mudab` CLI (`@maschinenlesbar.org/mudab-cli`) is not installed — installing it is their responsibility; never install it yourself, and do not fall back to `npx` or a local `node dist/...` build.
+
+This skill also filters JSON with `jq`. **Validate it too** — run `command -v jq`. If it is missing, inform the user that `jq` is not installed — installing it is their responsibility; never install it yourself — and carry on without it: filter the CLI output with `node -e` instead (Node is already on your PATH, since the CLI runs on it).
 
 **No API key is required.** The API does **no server-side filtering or sorting** — the `filter`/`orderby` in its OpenAPI spec are silently ignored by the live server. So fetch a page and filter/sort **client-side with `jq`** on `--compact` output. Page with `--from`/`--count` (default 100 rows); `--all` fetches the whole table. Data is © the data providers via the Bundesanstalt für Gewässerkunde / Umweltbundesamt — see the repo's DATA_LICENSE.md; the terms are not stated as open, so don't assume redistribution rights.
 
