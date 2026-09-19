@@ -1,6 +1,6 @@
 {
   "name": "mudab",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "German marine-monitoring skills powered by the mudab-cli (MUDAB Meeresumweltdatenbank API).",
   "author": {
     "name": "Sebastian Schürmann",
