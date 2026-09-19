@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MudabClient, extractRows } from "../src/client/client.js";
+import { MudabNetworkError } from "../src/client/errors.js";
 import { makeMockTransport, jsonResponse, jsonBodyOf } from "./helpers.js";
 import * as fx from "./fixtures.js";
 
@@ -67,4 +68,13 @@ test("extractRows takes the first array-valued property, whatever the key", () =
   assert.deepEqual(extractRows({}), []);
   assert.deepEqual(extractRows(null), []);
   assert.deepEqual(extractRows({ Status: "ok", ROWS: [{ a: 1 }] }), [{ a: 1 }]);
+});
+
+test("the client rejects a file: base URL before a custom transport sees it", () => {
+  const mt = makeMockTransport(() => jsonResponse(fx.stations));
+  assert.throws(
+    () => new MudabClient({ baseUrl: "file:///etc/passwd", transport: mt.transport }),
+    MudabNetworkError,
+  );
+  assert.equal(mt.calls.length, 0);
 });

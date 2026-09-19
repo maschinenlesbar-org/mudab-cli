@@ -89,8 +89,10 @@ and the canonical host answers directly.
   (`module: NodeNext`). Keep passing on Node 20/22/24.
 - **Exit codes** (`run.ts`): help/version → 0; usage → 2; 404 → 4; network → 6; other → 1.
 - **Retry/backoff:** transient `429`/`503` retried up to `maxRetries`, linear backoff.
-- `--base-url` is trusted input but only `http:`/`https:` is accepted (the transport
-  rejects other protocols).
+- `--base-url` is trusted input but only `http:`/`https:` is accepted: a `file:`,
+  `ftp:` or malformed value is a usage error at parse time (`parseBaseUrl`), the
+  engine constructor rejects a non-http(s) base URL with `MudabNetworkError` (so a
+  custom transport never receives one), and the default transport checks every hop.
 - **Scaffold origin:** this repo was scaffolded from `entgeltatlas-cli`; the API-key /
   X-API-Key machinery was stripped because MUDAB needs no auth.
 

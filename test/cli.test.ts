@@ -84,6 +84,17 @@ test("an empty --base-url is rejected before any request", async () => {
   assert.equal(cli.mt.calls.length, 0);
 });
 
+for (const bad of ["file:///etc/passwd", "ftp://example.org", "notaurl"]) {
+  test(`a non-http(s) --base-url (${bad}) is a usage error before any request`, async () => {
+    const cli = makeCli(() => jsonResponse(fx.stations));
+    const code = await run(["--base-url", bad, "stations"], cli.deps);
+    assert.notEqual(code, 0);
+    assert.equal(code, 2);
+    assert.equal(cli.mt.calls.length, 0);
+    assert.match(cli.err.join("\n"), /--base-url/);
+  });
+}
+
 test("a control character in --user-agent is rejected before any request", async () => {
   const cli = makeCli(() => jsonResponse(fx.stations));
   const code = await run(["stations", "--user-agent", "bad\r\nX-Injected: 1"], cli.deps);

@@ -64,6 +64,25 @@ export function parseHeaderValue(value: string): string {
   return value;
 }
 
+/**
+ * commander value-parser for `--base-url`: an absolute http(s) URL. A `file:`,
+ * `ftp:` or malformed value is a usage error at parse time, before any request.
+ */
+export function parseBaseUrl(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new InvalidArgumentError("Expected an absolute http(s) URL.");
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new InvalidArgumentError(
+      `Unsupported scheme "${url.protocol}". Expected an http(s) URL.`,
+    );
+  }
+  return value;
+}
+
 export interface GlobalOptions {
   baseUrl?: string;
   timeout?: number;

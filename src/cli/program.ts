@@ -9,7 +9,7 @@ import type { CliDeps } from "./io.js";
 import { defaultIO } from "./io.js";
 import { MudabClient } from "../client/client.js";
 import { MAX_TIMEOUT_MS } from "../client/http.js";
-import { parseIntArg, parseBoundedInt, parseHeaderValue, parseNonEmpty } from "./shared.js";
+import { parseIntArg, parseBoundedInt, parseHeaderValue, parseBaseUrl } from "./shared.js";
 import { registerCommands } from "./commands/list.js";
 
 /**
@@ -53,7 +53,7 @@ export function buildProgram(deps: CliDeps = defaultDeps): Command {
     .option(
       "--base-url <url>",
       "API base URL",
-      parseNonEmpty,
+      parseBaseUrl,
       "https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements",
     )
     .option(

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { RequestEngine } from "../src/client/engine.js";
-import { MudabApiError, MudabParseError } from "../src/client/errors.js";
+import { MudabApiError, MudabNetworkError, MudabParseError } from "../src/client/errors.js";
 import { makeMockTransport, jsonResponse, rawResponse, jsonBodyOf } from "./helpers.js";
 import * as fx from "./fixtures.js";
 
@@ -9,6 +9,14 @@ test("buildUrl normalises the path (parameters travel in the body)", () => {
   const e = new RequestEngine({ baseUrl: "https://example.test/base/" });
   assert.equal(e.buildUrl("STATION_SMALL"), "https://example.test/base/STATION_SMALL");
   assert.equal(e.buildUrl("/x"), "https://example.test/base/x");
+});
+
+test("the engine rejects a non-http(s) base URL before any request", () => {
+  const mt = makeMockTransport(() => jsonResponse(fx.parameters));
+  for (const baseUrl of ["file:///etc/passwd", "ftp://example.org", "notaurl"]) {
+    assert.throws(() => new RequestEngine({ baseUrl, transport: mt.transport }), MudabNetworkError);
+  }
+  assert.equal(mt.calls.length, 0);
 });
 
 test("postJson sends a POST with a JSON body, Content-Type and Content-Length", async () => {
