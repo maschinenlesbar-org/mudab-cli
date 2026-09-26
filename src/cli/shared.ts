@@ -6,6 +6,7 @@ import { InvalidArgumentError } from "commander";
 import type { CliDeps } from "./io.js";
 import type { MudabClientOptions } from "../client/client.js";
 import { MudabValidationError } from "../client/errors.js";
+import { MAX_RANGE_END } from "../client/client.js";
 import type { FilterRequest } from "../client/types.js";
 
 /** Default `range.count` — MUDAB returns the WHOLE table when no range is sent. */
@@ -19,14 +20,7 @@ export const DEFAULT_COUNT = 100;
  * literals (`0x10`, `0b10`, `1e3`), signs, padding and decimals.
  */
 export function parseIntArg(value: string): number {
-  if (!/^[0-9]+$/.test(value)) {
-    throw new InvalidArgumentError("Expected a non-negative integer.");
-  }
-  const n = Number(value);
-  if (!Number.isSafeInteger(n)) {
-    throw new InvalidArgumentError("Expected a non-negative integer.");
-  }
-  return n;
+  return parseBoundedInt(0, Number.MAX_SAFE_INTEGER)(value);
 }
 
 /** commander value-parser: a non-empty (after trimming) string. */
@@ -37,15 +31,29 @@ export function parseNonEmpty(value: string): string {
   return value;
 }
 
-/** Build a commander value-parser for an integer constrained to [min, max]. */
+/**
+ * Build a commander value-parser for an integer constrained to [min, max]. A
+ * well-formed number that is too large (even beyond 2^53) says so, rather than
+ * "Expected a non-negative integer".
+ */
 export function parseBoundedInt(min: number, max: number): (value: string) => number {
   return (value: string) => {
-    const n = parseIntArg(value);
+    if (!/^[0-9]+$/.test(value)) {
+      throw new InvalidArgumentError("Expected a non-negative integer.");
+    }
+    const n = Number(value);
+    if (!Number.isSafeInteger(n) || n > max) throw new InvalidArgumentError(`Must be <= ${max}.`);
     if (n < min) throw new InvalidArgumentError(`Must be >= ${min}.`);
-    if (n > max) throw new InvalidArgumentError(`Must be <= ${max}.`);
     return n;
   };
 }
+
+/**
+ * commander value-parser for `--from` / `--count`: 0..MAX_RANGE_END (2^31 - 1). The
+ * server takes the end of the range as a 32-bit integer and refuses anything larger
+ * with an HTML 403 from its front end.
+ */
+export const parseRangeInt = parseBoundedInt(0, MAX_RANGE_END);
 
 /**
  * commander value-parser for a value that ends up in an HTTP header (User-Agent).
@@ -122,8 +130,8 @@ export function toEngineOptions(global: GlobalOptions): MudabClientOptions {
  */
 export function addListOptions(cmd: Command): Command {
   return cmd
-    .option("--from <n>", "skip this many rows (range.from)", parseIntArg)
-    .option("--count <n>", `max rows to return (default ${DEFAULT_COUNT})`, parseIntArg)
+    .option("--from <n>", `skip this many rows (range.from; from + count at most ${MAX_RANGE_END})`, parseRangeInt)
+    .option("--count <n>", `max rows to return (default ${DEFAULT_COUNT})`, parseRangeInt)
     .option(
       "--all",
       "return the whole table (omit the range — can be very large; not combinable with --from/--count)",
@@ -135,7 +143,10 @@ export function addListOptions(cmd: Command): Command {
  *
  * `range` is omitted entirely with `--all`; otherwise `count` defaults to
  * {@link DEFAULT_COUNT} so a bare command never dumps a whole table, and `from`
- * defaults to 0 (the server answers a count-only range with an HTTP 500).
+ * defaults to 0 (the server answers a count-only range with an HTTP 500). The end
+ * of the range (`from + count`) must not exceed {@link MAX_RANGE_END}: the server
+ * refuses a larger one with an HTML 403, and repeated refusals may get the client
+ * blocked.
  */
 export function buildFilterRequest(opts: ListOptions): FilterRequest {
   if (opts.all) {
@@ -144,7 +155,15 @@ export function buildFilterRequest(opts: ListOptions): FilterRequest {
     }
     return {};
   }
-  return { range: { from: opts.from ?? 0, count: opts.count ?? DEFAULT_COUNT } };
+  const from = opts.from ?? 0;
+  const count = opts.count ?? DEFAULT_COUNT;
+  if (from + count > MAX_RANGE_END) {
+    throw new MudabValidationError(
+      `--from + --count (default ${DEFAULT_COUNT}) must not exceed ${MAX_RANGE_END}: ` +
+        "the server refuses a larger range end with HTTP 403. Use --all for the whole table.",
+    );
+  }
+  return { range: { from, count } };
 }
 
 /**

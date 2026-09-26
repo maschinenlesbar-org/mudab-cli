@@ -58,7 +58,8 @@ OpenAPI spec (`bundesAPI/mudab-api`) is unreliable, so trust the live behaviour:
 |---|---|---|
 | **Base URL** | `https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements`. The older `MUDABAnwendung` path 301-redirects away. | `engine.ts` `DEFAULT_BASE_URL` |
 | **Response wrapper key** | A single-key object, but the key is NOT reliably the path name (`/STATION_SMALL` → key `V_STATION_SMALL`). | `client.ts` `extractRows` takes the first array-valued property |
-| **`range` requires `from`** | A count-only range (`{count}` without `from`) is answered with **HTTP 500**. | `shared.ts` `buildFilterRequest` always sends `from` (default 0) |
+| **`range` requires `from`** | A count-only range (`{count}` without `from`) is answered with **HTTP 500**. | `shared.ts` `buildFilterRequest` always sends `from` (default 0); the client rejects a count-only range (`MudabValidationError`) |
+| **Range end is a 32-bit int** | `from + count` above 2³¹−1 (2147483647) gets an HTML **403 Forbidden** from the front end; on 2026-09-26 the host then stopped answering the client altogether. | `client.ts` `MAX_RANGE_END` + `assertRange`; the CLI bounds `--from`/`--count` and their sum (exit 2) |
 | **`filter` / `orderby` ignored** | Despite every endpoint being a "filterbare Liste", the live server **ignores** filter and orderby — a filter that should match nothing still returns the full page. | The CLI exposes NO filter/sort options; `FilterRequest` documents the no-op |
 | **`Compartment` enum incomplete** | Spec lists `BL/CW/CS/CF`; the data also contains `MM`. | `types.ts` types `Compartment` as an open `string` |
 | **Empty body** | Returns the WHOLE table (measurements ≈ 187,000 rows / 42 MB on 2026-09-15). | CLI defaults `range.count` to 100; `--all` omits the range |

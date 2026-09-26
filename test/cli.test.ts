@@ -164,3 +164,21 @@ test("--compact prints single-line JSON", async () => {
   assert.equal(cli.out.length, 1);
   assert.equal(cli.out[0], JSON.stringify(fx.stations.V_STATION_SMALL));
 });
+
+test("--from/--count are bounded to 2^31 - 1, and so is their sum", async () => {
+  for (const [args, message] of [
+    [["--from", "2147483648"], /Must be <= 2147483647\./],
+    [["--count", "999999999999"], /Must be <= 2147483647\./],
+    [["--count", "99999999999999999999"], /Must be <= 2147483647\./],
+    [["--from", "2147483647", "--count", "1"], /--from \+ --count \(default 100\) must not exceed 2147483647.*HTTP 403.*--all/],
+    [["--from", "2147483600"], /must not exceed 2147483647/],
+  ] as const) {
+    const cli = makeCli(() => jsonResponse(fx.stations));
+    assert.equal(await run(["stations", ...args], cli.deps), 2, args.join(" "));
+    assert.equal(cli.mt.calls.length, 0, args.join(" "));
+    assert.match(cli.err.join("\n"), message, args.join(" "));
+  }
+  const ok = makeCli(() => jsonResponse(fx.stations));
+  assert.equal(await run(["stations", "--from", "2147483646", "--count", "1"], ok.deps), 0);
+  assert.deepEqual(jsonBodyOf(ok.mt.last()), { range: { from: 2147483646, count: 1 } });
+});

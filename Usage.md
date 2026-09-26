@@ -28,6 +28,12 @@ Each command lists one dataset and prints a JSON array of rows to stdout.
 | `--count <n>` | max rows to return (default **100**) |
 | `--all` | return the whole table (omit the range — can be very large) |
 
+`--from`, `--count` and their sum are each at most 2147483647 (2³¹−1): the server
+computes the end of the range as a 32-bit integer and its front end refuses a larger
+one with an HTML `403 Forbidden` (after which the host stopped answering the client for
+a while on 2026-09-26). The CLI rejects such values before sending anything (exit 2);
+for the whole table use `--all`.
+
 > **No filter or sort options.** The API's OpenAPI spec advertises `filter` and
 > `orderby` on every endpoint, but the **live server ignores both** (a filter that
 > should match nothing still returns the full page — verified). Exposing them would
@@ -72,7 +78,7 @@ mudab plc-measurements --all --compact \
 |---|---|
 | `0` | success (help/version included); an empty result also exits 0 |
 | `1` | API/logical error, or a catch-all |
-| `2` | usage error (bad flags, unknown command, `--all` with `--from/--count`) |
+| `2` | usage error (bad flags, unknown command, `--all` with `--from/--count`, `--from` + `--count` above 2147483647) |
 | `4` | HTTP 404 |
 | `6` | network / transport failure (DNS, connection, timeout, response size-cap) |
 
