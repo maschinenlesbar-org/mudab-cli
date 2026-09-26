@@ -93,6 +93,10 @@ and the canonical host answers directly.
   `Retry-After` (delay-seconds or an IMF-fixdate, parsed strictly by `parseRetryAfter`)
   up to `MAX_RETRY_AFTER_MS` (30 s; a longer one is not retried, the error surfaces at
   once), else linear backoff (`retryDelayMs * attempt`).
+- **Library input is checked before any request** (`MudabValidationError`): the numeric
+  engine options (`timeoutMs` 0..2³¹−1, `maxRetries` 0..`MAX_RETRIES` = 10 — shared with
+  `--max-retries` —, `retryDelayMs` 0..30 000, `maxResponseBytes` 0..2⁵³−1), the
+  request's `range` (see the quirks table) and `parameters()`'s compartment.
 - `--base-url` is trusted input but only `http:`/`https:` is accepted: a `file:`,
   `ftp:` or malformed value is a usage error at parse time (`parseBaseUrl`), the
   engine constructor rejects a non-http(s) base URL with `MudabNetworkError` (so a

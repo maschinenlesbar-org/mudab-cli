@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { RequestEngine, parseRetryAfter } from "../src/client/engine.js";
-import { MudabApiError, MudabNetworkError, MudabParseError } from "../src/client/errors.js";
+import { MudabApiError, MudabNetworkError, MudabParseError, MudabValidationError } from "../src/client/errors.js";
 import { makeMockTransport, jsonResponse, rawResponse, jsonBodyOf } from "./helpers.js";
 import * as fx from "./fixtures.js";
 
@@ -207,4 +207,27 @@ test("parseRetryAfter reads delay-seconds and IMF-fixdates only", () => {
   assert.equal(parseRetryAfter("Sat, 26 Sep 2026 09:00:00 GMT", now), 0);
   assert.equal(parseRetryAfter("1.5", now), undefined);
   assert.equal(parseRetryAfter(undefined, now), undefined);
+});
+
+test("numeric engine options must be integers in range", () => {
+  const cases: [string, number, RegExp][] = [
+    ["maxRetries", Infinity, /^Invalid option maxRetries: expected an integer from 0 to 10, got Infinity\.$/],
+    ["maxRetries", 11, /from 0 to 10, got 11/],
+    ["maxRetries", -1, /got -1/],
+    ["timeoutMs", -5, /^Invalid option timeoutMs: expected an integer from 0 to 2147483647, got -5\.$/],
+    ["timeoutMs", NaN, /got NaN/],
+    ["timeoutMs", 1.5, /got 1\.5/],
+    ["retryDelayMs", 30_001, /^Invalid option retryDelayMs: expected an integer from 0 to 30000/],
+    ["maxResponseBytes", -1, /^Invalid option maxResponseBytes: expected an integer from 0 to 9007199254740991, got -1\.$/],
+  ];
+  for (const [name, value, message] of cases) {
+    assert.throws(
+      () => new RequestEngine({ [name]: value }),
+      (err) => err instanceof MudabValidationError && message.test(err.message),
+      `${name}=${value}`,
+    );
+  }
+  // Boundaries are accepted.
+  new RequestEngine({ maxRetries: 0, timeoutMs: 0, retryDelayMs: 0, maxResponseBytes: 0 });
+  new RequestEngine({ maxRetries: 10, timeoutMs: 2_147_483_647, retryDelayMs: 30_000 });
 });
