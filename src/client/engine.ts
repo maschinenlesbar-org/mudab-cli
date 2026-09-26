@@ -60,7 +60,7 @@ const MAX_DETAIL_LENGTH = 200;
  * `JSON.stringify` alone leaves DEL and the C1 range raw. Checked by char code so
  * the source stays free of control bytes.
  */
-function sanitizeServerText(text: string): string {
+export function sanitizeServerText(text: string): string {
   let out = "";
   for (const ch of text) {
     const n = ch.codePointAt(0) ?? 0;
@@ -68,6 +68,15 @@ function sanitizeServerText(text: string): string {
     out += ch;
   }
   return out;
+}
+
+/**
+ * A server-provided message made safe for an error message: control characters
+ * stripped and cut at MAX_DETAIL_LENGTH characters.
+ */
+export function cleanDetail(raw: string): string {
+  const clean = sanitizeServerText(raw);
+  return clean.length > MAX_DETAIL_LENGTH ? `${clean.slice(0, MAX_DETAIL_LENGTH)}…` : clean;
 }
 
 /**
@@ -177,14 +186,17 @@ export class RequestEngine {
     }
   }
 
-  /** POST a JSON payload and parse the JSON reply into `T`. */
+  /**
+   * POST a JSON payload and parse the JSON reply into `T`. Every MUDAB endpoint
+   * answers with a JSON document, so an empty body (or a 204) is a
+   * `MudabParseError`, not an empty result.
+   */
   async postJson<T>(path: string, payload: unknown): Promise<T> {
     const body = Buffer.from(JSON.stringify(payload ?? {}), "utf8");
     const res = await this.request("POST", path, { accept: "application/json", body });
     const text = res.data.toString("utf8");
-    // A 204 or empty body is not a parse failure — surface it as null.
     if (res.status === 204 || text.trim().length === 0) {
-      return null as T;
+      throw new MudabParseError(`Empty response body from ${path}`);
     }
     try {
       return JSON.parse(text) as T;
@@ -209,8 +221,7 @@ export class RequestEngine {
           // The parsed string is attacker-controlled: strip control bytes so ANSI/OSC
           // escapes can't reach the terminal, and cap length so a hostile body can't
           // flood stderr.
-          const clean = sanitizeServerText(raw);
-          detail = clean.length > MAX_DETAIL_LENGTH ? `${clean.slice(0, MAX_DETAIL_LENGTH)}…` : clean;
+          detail = cleanDetail(raw);
         }
       } catch {
         // Not JSON. Surface a short, whitespace-collapsed snippet of a textual

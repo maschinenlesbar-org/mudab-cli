@@ -57,7 +57,7 @@ OpenAPI spec (`bundesAPI/mudab-api`) is unreliable, so trust the live behaviour:
 | Quirk | Reality | Where handled |
 |---|---|---|
 | **Base URL** | `https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements`. The older `MUDABAnwendung` path 301-redirects away. | `engine.ts` `DEFAULT_BASE_URL` |
-| **Response wrapper key** | A single-key object, but the key is NOT reliably the path name (`/STATION_SMALL` → key `V_STATION_SMALL`). | `client.ts` `extractRows` takes the first array-valued property |
+| **Response wrapper key** | A single-key object, but the key is NOT reliably the path name (`/STATION_SMALL` → key `V_STATION_SMALL`). | `client.ts` `extractRows` takes the array under the one key (or a bare array); any other 200 reply — an error object, a second key, `null`, an empty body — is a `MudabParseError` naming what came back (exit 1), never `[]` |
 | **`range` requires `from`** | A count-only range (`{count}` without `from`) is answered with **HTTP 500**. | `shared.ts` `buildFilterRequest` always sends `from` (default 0); the client rejects a count-only range (`MudabValidationError`) |
 | **Range end is a 32-bit int** | `from + count` above 2³¹−1 (2147483647) gets an HTML **403 Forbidden** from the front end; on 2026-09-26 the host then stopped answering the client altogether. | `client.ts` `MAX_RANGE_END` + `assertRange`; the CLI bounds `--from`/`--count` and their sum (exit 2) |
 | **`filter` / `orderby` ignored** | Despite every endpoint being a "filterbare Liste", the live server **ignores** filter and orderby — a filter that should match nothing still returns the full page. | The CLI exposes NO filter/sort options; `FilterRequest` documents the no-op |

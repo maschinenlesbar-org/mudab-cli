@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MudabClient, extractRows } from "../src/client/client.js";
-import { MudabNetworkError, MudabValidationError } from "../src/client/errors.js";
-import { makeMockTransport, jsonResponse, jsonBodyOf } from "./helpers.js";
+import { MudabNetworkError, MudabParseError, MudabValidationError } from "../src/client/errors.js";
+import { makeMockTransport, jsonResponse, jsonBodyOf, rawResponse } from "./helpers.js";
 import * as fx from "./fixtures.js";
 
 function clientFor(body: unknown) {
@@ -62,12 +62,44 @@ test("an empty result yields an empty array", async () => {
   assert.deepEqual(await client.stations(), []);
 });
 
-test("extractRows takes the first array-valued property, whatever the key", () => {
+test("extractRows takes the one wrapped array, whatever the key, or a bare array", () => {
   assert.deepEqual(extractRows({ ANY_KEY: [1, 2] }), [1, 2]);
+  assert.deepEqual(extractRows({ V_STATION_SMALL: [] }), []);
   assert.deepEqual(extractRows([3, 4]), [3, 4]);
-  assert.deepEqual(extractRows({}), []);
-  assert.deepEqual(extractRows(null), []);
-  assert.deepEqual(extractRows({ Status: "ok", ROWS: [{ a: 1 }] }), [{ a: 1 }]);
+});
+
+test("a 200 reply of any other shape is a MudabParseError naming what came back", async () => {
+  const cases: [string, RegExp][] = [
+    ['{"message":"ORA-00942: table or view does not exist"}', /got an object with the key "message" \(message: "ORA-00942: table or view does not exist"\)\.$/],
+    ['{"error":"Datenbankfehler","rows":[]}', /got an object with the keys "error", "rows" \(error: "Datenbankfehler"\)\.$/],
+    ['{"meta":["x"],"V_STATION_SMALL":[{"a":1}]}', /got an object with the keys "meta", "V_STATION_SMALL"\.$/],
+    ['{"__proto__":[{"x":1}],"R":[{"a":1}]}', /got an object with the keys "__proto__", "R"\.$/],
+    ['{"V_STATION_SMALL":null}', /got an object with the key "V_STATION_SMALL"\.$/],
+    ["{}", /got an empty object\.$/],
+    ["null", /got null\.$/],
+    ['"hello"', /got a string\.$/],
+    ["42", /got a number\.$/],
+  ];
+  for (const [body, message] of cases) {
+    const mt = makeMockTransport(() => rawResponse(body, "application/json"));
+    const client = new MudabClient({ transport: mt.transport });
+    await assert.rejects(
+      () => client.stations(),
+      (err) =>
+        err instanceof MudabParseError &&
+        err.message.startsWith(
+          "Unexpected response shape from /STATION_SMALL: expected a JSON object wrapping one row array, got ",
+        ) &&
+        message.test(err.message),
+      body,
+    );
+  }
+});
+
+test("an empty 200 body is a MudabParseError, not an empty result", async () => {
+  const mt = makeMockTransport(() => rawResponse("", "application/json"));
+  const client = new MudabClient({ transport: mt.transport });
+  await assert.rejects(() => client.stations(), MudabParseError);
 });
 
 test("the client rejects a file: base URL before a custom transport sees it", () => {

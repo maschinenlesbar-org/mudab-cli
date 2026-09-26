@@ -9,8 +9,8 @@
 //   await c.stations({ range: { count: 10 } });
 //   await c.parameters({ filter: { and: { col: "COMPT_DS", op: "=", value: "CW" } } });
 
-import { RequestEngine, type EngineOptions } from "./engine.js";
-import { MudabValidationError } from "./errors.js";
+import { RequestEngine, cleanDetail, type EngineOptions } from "./engine.js";
+import { MudabParseError, MudabValidationError } from "./errors.js";
 import type {
   FilterRequest,
   HelcomPLCStation,
@@ -35,20 +35,49 @@ const COMPARTMENT_ENDPOINT: Record<ParameterCompartment, string> = {
   sediment: "/MV_PARAMETER_SEDIMENT",
 };
 
-/**
- * Extract the row array from a MUDAB response. The API always returns a single-key
- * object wrapping the array, but the key is not reliably the path name (e.g.
- * `/STATION_SMALL` -> key `V_STATION_SMALL`), so we take the first array-valued
- * property rather than trusting a fixed key. Returns `[]` for a null/empty reply.
- */
-export function extractRows<T>(res: unknown): T[] {
-  if (Array.isArray(res)) return res as T[];
-  if (res && typeof res === "object") {
-    for (const value of Object.values(res as Record<string, unknown>)) {
-      if (Array.isArray(value)) return value as T[];
+/** Name what came back instead of the row wrapper, for the shape error. */
+function describeShape(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value !== "object") return `a ${typeof value}`;
+  const keys = Object.keys(value);
+  if (keys.length === 0) return "an empty object";
+  const shown = keys
+    .slice(0, 5)
+    .map((k) => JSON.stringify(k.length > 40 ? `${k.slice(0, 40)}…` : k))
+    .join(", ");
+  let text = `an object with the key${keys.length === 1 ? "" : "s"} ${shown}${keys.length > 5 ? ", …" : ""}`;
+  // An error object delivered with status 200 (e.g. {"message": "ORA-00942: ..."}):
+  // show its message, so the failure reads as one rather than as "no data".
+  const record = value as Record<string, unknown>;
+  for (const key of ["detail", "message", "error"]) {
+    const raw = record[key];
+    if (typeof raw === "string" && raw.trim() !== "") {
+      text += ` (${key}: ${JSON.stringify(cleanDetail(raw))})`;
+      break;
     }
   }
-  return [];
+  return text;
+}
+
+/**
+ * Extract the row array from a MUDAB response. The API returns a single-key object
+ * wrapping the array, but the key is not reliably the path name (e.g.
+ * `/STATION_SMALL` -> key `V_STATION_SMALL`), so any one key is accepted; a bare
+ * array is taken as is. Anything else — an error object sent with status 200, a
+ * second key, `null`, a string — throws a `MudabParseError` naming what came back,
+ * so a server-side failure never reads as an empty result.
+ */
+export function extractRows<T>(res: unknown, path = "the API"): T[] {
+  if (Array.isArray(res)) return res as T[];
+  if (res !== null && typeof res === "object") {
+    const keys = Object.keys(res);
+    const only = keys.length === 1 ? (res as Record<string, unknown>)[keys[0] as string] : undefined;
+    if (Array.isArray(only)) return only as T[];
+  }
+  throw new MudabParseError(
+    `Unexpected response shape from ${path}: expected a JSON object wrapping one row array, ` +
+      `got ${describeShape(res)}.`,
+  );
 }
 
 /**
@@ -110,7 +139,7 @@ export class MudabClient {
   private async filterList<T>(resource: string, req: FilterRequest = {}): Promise<T[]> {
     assertRange(req);
     const res = await this.engine.postJson<unknown>(resource, req);
-    return extractRows<T>(res);
+    return extractRows<T>(res, resource);
   }
 
   /** Measurement stations (`STATION_SMALL`). */

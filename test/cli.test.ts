@@ -4,7 +4,7 @@ import { run } from "../src/cli/run.js";
 import { MudabClient } from "../src/client/client.js";
 import type { CliDeps } from "../src/cli/io.js";
 import type { HttpRequest, HttpResponse } from "../src/client/http.js";
-import { makeMockTransport, jsonResponse, jsonBodyOf } from "./helpers.js";
+import { makeMockTransport, jsonResponse, jsonBodyOf, rawResponse } from "./helpers.js";
 import * as fx from "./fixtures.js";
 
 function makeCli(responder: (req: HttpRequest) => HttpResponse) {
@@ -181,4 +181,11 @@ test("--from/--count are bounded to 2^31 - 1, and so is their sum", async () => 
   const ok = makeCli(() => jsonResponse(fx.stations));
   assert.equal(await run(["stations", "--from", "2147483646", "--count", "1"], ok.deps), 0);
   assert.deepEqual(jsonBodyOf(ok.mt.last()), { range: { from: 2147483646, count: 1 } });
+});
+
+test("a 200 error object exits 1 with a shape error instead of printing []", async () => {
+  const cli = makeCli(() => rawResponse('{"message":"ORA-00942: table or view does not exist"}', "application/json"));
+  assert.equal(await run(["stations", "--compact"], cli.deps), 1);
+  assert.deepEqual(cli.out, []);
+  assert.match(cli.err.join("\n"), /^Error: Unexpected response shape from \/STATION_SMALL: .*ORA-00942/);
 });

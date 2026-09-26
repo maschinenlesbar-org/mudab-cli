@@ -38,10 +38,15 @@ test("postJson parses and returns the JSON body", async () => {
   assert.deepEqual(await e.postJson("/MV_PARAMETER", {}), fx.parameters);
 });
 
-test("postJson returns null on an empty/204 body", async () => {
-  const mt = makeMockTransport(() => rawResponse("", "application/json", 204));
-  const e = new RequestEngine({ transport: mt.transport });
-  assert.equal(await e.postJson("/x", {}), null);
+test("postJson rejects an empty or 204 body as a MudabParseError", async () => {
+  for (const [body, status] of [["", 204], ["", 200], ["  \n", 200]] as const) {
+    const mt = makeMockTransport(() => rawResponse(body, "application/json", status));
+    const e = new RequestEngine({ transport: mt.transport });
+    await assert.rejects(
+      () => e.postJson("/x", {}),
+      (err) => err instanceof MudabParseError && err.message === "Empty response body from /x",
+    );
+  }
 });
 
 test("postJson throws MudabParseError on invalid JSON", async () => {
