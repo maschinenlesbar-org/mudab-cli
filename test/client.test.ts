@@ -137,3 +137,18 @@ test("the client checks the range before sending it", async () => {
   assert.deepEqual(jsonBodyOf(mt.calls[0]!), { range: { from: 2147483646, count: 1 } });
   assert.deepEqual(jsonBodyOf(mt.calls[1]!), { range: { from: 5 } });
 });
+
+test("parameters() rejects an unknown compartment with a MudabValidationError, no request", async () => {
+  for (const bad of ["WASSER", "toString", "__proto__", "constructor", "", 5]) {
+    const { client, mt } = clientFor(fx.parameters);
+    await assert.rejects(
+      () => client.parameters({}, bad as never),
+      (err) =>
+        err instanceof MudabValidationError &&
+        err.message ===
+          `Invalid compartment: expected one of biologie, biota, wasser, sediment, got ${typeof bad === "string" ? JSON.stringify(bad) : String(bad)}.`,
+      String(bad),
+    );
+    assert.equal(mt.calls.length, 0);
+  }
+});

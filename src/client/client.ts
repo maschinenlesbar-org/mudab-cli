@@ -35,6 +35,24 @@ const COMPARTMENT_ENDPOINT: Record<ParameterCompartment, string> = {
   sediment: "/MV_PARAMETER_SEDIMENT",
 };
 
+/** The compartments `parameters()` accepts, in the order the CLI lists them. */
+export const PARAMETER_COMPARTMENTS: readonly ParameterCompartment[] = ["biologie", "biota", "wasser", "sediment"];
+
+/**
+ * The endpoint of a compartment. The lookup checks own keys only, so an unknown
+ * value (`"WASSER"`, or `"toString"`/`"__proto__"`, which a plain object inherits)
+ * is a `MudabValidationError`, not a TypeError from deep inside the engine.
+ */
+function compartmentEndpoint(compartment: unknown): string {
+  if (typeof compartment === "string" && Object.hasOwn(COMPARTMENT_ENDPOINT, compartment)) {
+    return COMPARTMENT_ENDPOINT[compartment as ParameterCompartment];
+  }
+  throw new MudabValidationError(
+    `Invalid compartment: expected one of ${PARAMETER_COMPARTMENTS.join(", ")}, got ` +
+      `${typeof compartment === "string" ? JSON.stringify(compartment) : String(compartment)}.`,
+  );
+}
+
 /** Name what came back instead of the row wrapper, for the shape error. */
 function describeShape(value: unknown): string {
   if (value === null) return "null";
@@ -154,10 +172,11 @@ export class MudabClient {
 
   /**
    * Measured parameters (`MV_PARAMETER`). Pass a compartment to hit the
-   * compartment-specific endpoint (`MV_PARAMETER_{BIOLOGIE,BIOTA,WASSER,SEDIMENT}`).
+   * compartment-specific endpoint (`MV_PARAMETER_{BIOLOGIE,BIOTA,WASSER,SEDIMENT}`);
+   * any other value rejects with a `MudabValidationError` before a request is made.
    */
-  parameters(req?: FilterRequest, compartment?: ParameterCompartment): Promise<Parameter[]> {
-    const resource = compartment ? COMPARTMENT_ENDPOINT[compartment] : "/MV_PARAMETER";
+  async parameters(req?: FilterRequest, compartment?: ParameterCompartment): Promise<Parameter[]> {
+    const resource = compartment === undefined ? "/MV_PARAMETER" : compartmentEndpoint(compartment);
     return this.filterList(resource, req);
   }
 

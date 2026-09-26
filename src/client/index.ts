@@ -1,6 +1,6 @@
 // Public entry point for the API client library.
 
-export { MudabClient, extractRows, MAX_RANGE_END } from "./client.js";
+export { MudabClient, extractRows, MAX_RANGE_END, PARAMETER_COMPARTMENTS } from "./client.js";
 export type { MudabClientOptions, ParameterCompartment } from "./client.js";
 export { RequestEngine, DEFAULT_BASE_URL, MAX_RETRY_AFTER_MS, parseRetryAfter } from "./engine.js";
 export type { EngineOptions, RawResponse } from "./engine.js";

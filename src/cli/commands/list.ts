@@ -5,6 +5,7 @@
 
 import { Option, type Command } from "commander";
 import type { CliDeps } from "../io.js";
+import { PARAMETER_COMPARTMENTS } from "../../client/client.js";
 import type { MudabClient, ParameterCompartment } from "../../client/client.js";
 import type { FilterRequest } from "../../client/types.js";
 import { action, addListOptions, buildFilterRequest, renderJson } from "../shared.js";
@@ -41,8 +42,6 @@ const LIST_COMMANDS: { name: string; desc: string; run: ListFn }[] = [
   },
 ];
 
-const PARAMETER_COMPARTMENTS: ParameterCompartment[] = ["biologie", "biota", "wasser", "sediment"];
-
 /**
  * The compartment (COMPT_DS) code table, verified live. NOTE: this is NOT
  * exhaustive — the API also returns codes outside the documented set (e.g. `MM`).
@@ -70,7 +69,7 @@ export function registerCommands(program: Command, deps: CliDeps): void {
     .description("List measured parameters (MV_PARAMETER)")
     .addOption(
       new Option("--compartment <c>", "restrict to a compartment's parameter endpoint").choices(
-        PARAMETER_COMPARTMENTS,
+        [...PARAMETER_COMPARTMENTS],
       ),
     );
   addListOptions(params).action(
