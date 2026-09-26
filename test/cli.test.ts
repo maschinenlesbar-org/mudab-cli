@@ -225,3 +225,19 @@ test("--user-agent: blank or non-Latin-1 is a usage error; tab and Latin-1 pass"
   assert.equal(await run(["--user-agent", "m\u00fcdab\t1", "stations"], ok.deps), 0);
   assert.equal(ok.mt.last().headers?.["User-Agent"], "m\u00fcdab\t1");
 });
+
+test("a deeply nested response fails cleanly instead of overflowing the stack", async () => {
+  const depth = 200_000;
+  const body = `{"R":[${"[".repeat(depth)}${"]".repeat(depth)}]}`;
+  const pretty = makeCli(() => rawResponse(body, "application/json"));
+  assert.equal(await run(["stations"], pretty.deps), 1);
+  assert.deepEqual(pretty.err, ["Error: The response is nested too deeply to pretty-print; try --compact."]);
+
+  const compact = makeCli(() => rawResponse(body, "application/json"));
+  const code = await run(["--compact", "stations"], compact.deps);
+  // The compact form may fit on the stack; if it does not, the message is clean too.
+  if (code !== 0) {
+    assert.equal(code, 1);
+    assert.deepEqual(compact.err, ["Error: The response is nested too deeply to print."]);
+  }
+});
