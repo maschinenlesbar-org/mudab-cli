@@ -18,6 +18,7 @@ export {
   MudabNetworkError,
   MudabValidationError,
   MudabParseError,
+  redactUrl,
 } from "./errors.js";
 
 export * from "./types.js";

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { RequestEngine, parseRetryAfter } from "../src/client/engine.js";
-import { MudabApiError, MudabNetworkError, MudabParseError, MudabValidationError } from "../src/client/errors.js";
+import { MudabApiError, MudabNetworkError, MudabParseError, MudabValidationError, redactUrl } from "../src/client/errors.js";
 import { makeMockTransport, jsonResponse, rawResponse, jsonBodyOf } from "./helpers.js";
 import * as fx from "./fixtures.js";
 
@@ -230,4 +230,23 @@ test("numeric engine options must be integers in range", () => {
   // Boundaries are accepted.
   new RequestEngine({ maxRetries: 0, timeoutMs: 0, retryDelayMs: 0, maxResponseBytes: 0 });
   new RequestEngine({ maxRetries: 10, timeoutMs: 2_147_483_647, retryDelayMs: 30_000 });
+});
+
+test("userinfo in the base URL is redacted from error messages but still sent", async () => {
+  const mt = makeMockTransport(() => rawResponse("boom", "text/plain", 500));
+  const e = new RequestEngine({ baseUrl: "http://user:secret@127.0.0.1:1/base", transport: mt.transport });
+  await assert.rejects(
+    () => e.postJson("/STATION_SMALL", {}),
+    (err) =>
+      err instanceof MudabApiError &&
+      err.message === "HTTP 500 for POST http://***@127.0.0.1:1/base/STATION_SMALL: boom" &&
+      err.url === "http://***@127.0.0.1:1/base/STATION_SMALL",
+  );
+  assert.equal(mt.last().url, "http://user:secret@127.0.0.1:1/base/STATION_SMALL");
+  assert.throws(
+    () => new RequestEngine({ baseUrl: "ftp://user:secret@example.org/" }),
+    (err) => err instanceof MudabNetworkError && !err.message.includes("secret"),
+  );
+  assert.equal(redactUrl("https://example.org/x"), "https://example.org/x");
+  assert.equal(redactUrl("not a url"), "not a url");
 });

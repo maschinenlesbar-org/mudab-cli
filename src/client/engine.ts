@@ -6,7 +6,13 @@
 // in the body, so there is no query-string builder. There is no authentication.
 
 import { MAX_TIMEOUT_MS, nodeHttpTransport, type Transport } from "./http.js";
-import { MudabApiError, MudabNetworkError, MudabParseError, MudabValidationError } from "./errors.js";
+import {
+  MudabApiError,
+  MudabNetworkError,
+  MudabParseError,
+  MudabValidationError,
+  redactUrl,
+} from "./errors.js";
 
 export const DEFAULT_BASE_URL = "https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements";
 const DEFAULT_USER_AGENT = "mudab-cli";
@@ -142,7 +148,7 @@ function assertHttpScheme(baseUrl: string): void {
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new MudabNetworkError(
-      `Unsupported protocol "${url.protocol}" in base URL: ${baseUrl}`,
+      `Unsupported protocol "${url.protocol}" in base URL: ${redactUrl(baseUrl)}`,
     );
   }
 }
