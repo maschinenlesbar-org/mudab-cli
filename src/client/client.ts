@@ -3,11 +3,14 @@
 // data from the German coastal Bundesländer and research institutions.
 //
 // Every endpoint is a POST that takes a FilterRequest (filter / range / orderby)
-// and returns a single-key object wrapping the row array. There is NO auth.
+// and returns a single-key object wrapping the row array. There is NO auth. Only
+// `range` is honoured, and it needs a `from` (the server ignores filter/orderby,
+// and answers a count-only range with HTTP 500); filter the rows yourself.
 //
 //   const c = new MudabClient();
-//   await c.stations({ range: { count: 10 } });
-//   await c.parameters({ filter: { and: { col: "COMPT_DS", op: "=", value: "CW" } } });
+//   await c.stations({ range: { from: 0, count: 10 } });
+//   const water = await c.parameters({ range: { from: 0, count: 100 } }, "wasser");
+//   const cw = (await c.parameters()).filter((p) => p.COMPT_DS === "CW"); // whole table
 
 import { RequestEngine, cleanDetail, type EngineOptions } from "./engine.js";
 import { MudabParseError, MudabValidationError } from "./errors.js";
