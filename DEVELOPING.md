@@ -98,9 +98,12 @@ and the canonical host answers directly.
   `--max-retries` —, `retryDelayMs` 0..30 000, `maxResponseBytes` 0..2⁵³−1), the
   request's `range` (see the quirks table) and `parameters()`'s compartment.
 - `--base-url` is trusted input but only `http:`/`https:` is accepted: a `file:`,
-  `ftp:` or malformed value is a usage error at parse time (`parseBaseUrl`), the
-  engine constructor rejects a non-http(s) base URL with `MudabNetworkError` (so a
-  custom transport never receives one), and the default transport checks every hop.
+  `ftp:` or malformed value, a query or fragment (paths are appended as a string, so
+  they would swallow every resource path) or surrounding whitespace is a usage error
+  at parse time (`parseBaseUrl`), the engine constructor rejects a non-http(s) base
+  URL or one with a query/fragment with `MudabNetworkError` (so a custom transport
+  never receives one), and the default transport checks every hop. Userinfo is kept
+  for the request and redacted (`redactUrl`) in every error message.
 - **Scaffold origin:** this repo was scaffolded from `entgeltatlas-cli`; the API-key /
   X-API-Key machinery was stripped because MUDAB needs no auth.
 

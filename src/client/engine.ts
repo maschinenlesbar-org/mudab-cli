@@ -134,10 +134,13 @@ export function cleanDetail(raw: string): string {
 }
 
 /**
- * Reject a base URL whose scheme is not http(s). The default transport already
- * gates this per hop, but the engine is exported as a library and may be handed a
- * custom transport that does no such check, so gate the configured base URL here
- * too (a `file:`/`ftp:` base URL fails fast with a typed error).
+ * Reject a base URL whose scheme is not http(s), or that has a query or fragment.
+ * The default transport already gates the scheme per hop, but the engine is
+ * exported as a library and may be handed a custom transport that does no such
+ * check, so gate the configured base URL here too (a `file:`/`ftp:` base URL fails
+ * fast with a typed error). Request paths are appended to the base URL as a string,
+ * so a `?` or `#` in it would swallow every path: `http://h/?x=1` posts to
+ * `/?x=1/STATION_SMALL` and `http://h/#f` to `/`.
  */
 function assertHttpScheme(baseUrl: string): void {
   let url: URL;
@@ -150,6 +153,9 @@ function assertHttpScheme(baseUrl: string): void {
     throw new MudabNetworkError(
       `Unsupported protocol "${url.protocol}" in base URL: ${redactUrl(baseUrl)}`,
     );
+  }
+  if (/[?#]/.test(baseUrl)) {
+    throw new MudabNetworkError(`Base URL must not contain a query or fragment: ${redactUrl(baseUrl)}`);
   }
 }
 

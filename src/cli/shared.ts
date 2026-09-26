@@ -73,8 +73,9 @@ export function parseHeaderValue(value: string): string {
 }
 
 /**
- * commander value-parser for `--base-url`: an absolute http(s) URL. A `file:`,
- * `ftp:` or malformed value is a usage error at parse time, before any request.
+ * commander value-parser for `--base-url`: an absolute http(s) URL without a query,
+ * fragment or surrounding whitespace. A `file:`, `ftp:` or malformed value is a
+ * usage error at parse time, before any request.
  */
 export function parseBaseUrl(value: string): string {
   let url: URL;
@@ -87,6 +88,16 @@ export function parseBaseUrl(value: string): string {
     throw new InvalidArgumentError(
       `Unsupported scheme "${url.protocol}". Expected an http(s) URL.`,
     );
+  }
+  // Paths are appended to the base URL as a string, so a query or fragment would
+  // swallow every request path ("http://h/#f" posts to "/" for every command).
+  if (/[?#]/.test(value)) {
+    throw new InvalidArgumentError("A base URL cannot have a query (?) or fragment (#).");
+  }
+  // new URL() trims surrounding whitespace silently; the raw value is what the
+  // engine uses, so reject it rather than guess.
+  if (value !== value.trim()) {
+    throw new InvalidArgumentError("A base URL cannot have surrounding whitespace.");
   }
   return value;
 }

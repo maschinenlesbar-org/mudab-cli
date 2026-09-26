@@ -250,3 +250,15 @@ test("userinfo in the base URL is redacted from error messages but still sent", 
   assert.equal(redactUrl("https://example.org/x"), "https://example.org/x");
   assert.equal(redactUrl("not a url"), "not a url");
 });
+
+test("the engine rejects a base URL with a query or fragment (library users)", () => {
+  for (const baseUrl of ["http://h.test/x?y=1", "http://u:secret@h.test/x#f"]) {
+    assert.throws(
+      () => new RequestEngine({ baseUrl }),
+      (err) =>
+        err instanceof MudabNetworkError &&
+        err.message.startsWith("Base URL must not contain a query or fragment: http://") &&
+        !err.message.includes("secret"),
+    );
+  }
+});

@@ -189,3 +189,23 @@ test("a 200 error object exits 1 with a shape error instead of printing []", asy
   assert.deepEqual(cli.out, []);
   assert.match(cli.err.join("\n"), /^Error: Unexpected response shape from \/STATION_SMALL: .*ORA-00942/);
 });
+
+for (const [bad, message] of [
+  ["http://127.0.0.1:1/echo?x=1", /A base URL cannot have a query \(\?\) or fragment \(#\)\./],
+  ["http://127.0.0.1:1/echo#frag", /A base URL cannot have a query \(\?\) or fragment \(#\)\./],
+  [" http://127.0.0.1:1/echo", /A base URL cannot have surrounding whitespace\./],
+  ["http://127.0.0.1:1/echo ", /A base URL cannot have surrounding whitespace\./],
+] as const) {
+  test(`--base-url ${JSON.stringify(bad)} is a usage error before any request`, async () => {
+    const cli = makeCli(() => jsonResponse(fx.stations));
+    assert.equal(await run(["--base-url", bad, "stations"], cli.deps), 2);
+    assert.equal(cli.mt.calls.length, 0);
+    assert.match(cli.err.join("\n"), message);
+  });
+}
+
+test("a --base-url with a path prefix still works", async () => {
+  const cli = makeCli(() => jsonResponse(fx.stations));
+  assert.equal(await run(["--base-url", "http://127.0.0.1:1/mirror/mudab/", "stations"], cli.deps), 0);
+  assert.equal(cli.mt.last().url, "http://127.0.0.1:1/mirror/mudab/STATION_SMALL");
+});
