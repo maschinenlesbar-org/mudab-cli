@@ -30,15 +30,17 @@ This skill also filters JSON with `jq`. **Validate it too** — run `command -v 
 ## Commands
 
 ```bash
-mudab parameters                       # all parameters (MV_PARAMETER)
-mudab parameters --compartment wasser  # water only    (CW)
-mudab parameters --compartment sediment# sediment only (CS)
-mudab parameters --compartment biota   # biota only    (CF)
-mudab parameters --compartment biologie# biology only  (BL)
-mudab plc-parameters                   # parameters measured at HELCOM PLC river stations
+mudab parameters --all --compact                        # all parameters (MV_PARAMETER)
+mudab parameters --compartment wasser --all --compact   # water only    (CW)
+mudab parameters --compartment sediment --all --compact # sediment only (CS)
+mudab parameters --compartment biota --all --compact    # biota only    (CF)
+mudab parameters --compartment biologie --all --compact # biology only  (BL)
+mudab plc-parameters --all --compact                    # parameters measured at HELCOM PLC river stations
 ```
 
-The parameter tables are small (at most ~1,250 rows on 2026-09-15), so `--all` is fine. Each
+The parameter tables are small (at most ~1,250 rows on 2026-09-15), so always pass
+`--all`: without it every command stops at the default 100 rows (the combined table has
+889), and a list cut at 100 would read as "not measured". Each
 row: `PARAMETER` (abbreviation, e.g. `HG` for mercury), `PARAM_NAME` (e.g. "mercury"),
 `PARAMETERGRUPPE`/`PARAMGROUP_NAME` (the group, e.g. "Metals and metalloids"; can be
 `null`), and `COMPT_DS` (compartment).
