@@ -209,3 +209,19 @@ test("a --base-url with a path prefix still works", async () => {
   assert.equal(await run(["--base-url", "http://127.0.0.1:1/mirror/mudab/", "stations"], cli.deps), 0);
   assert.equal(cli.mt.last().url, "http://127.0.0.1:1/mirror/mudab/STATION_SMALL");
 });
+
+test("--user-agent: blank or non-Latin-1 is a usage error; tab and Latin-1 pass", async () => {
+  for (const [ua, message] of [
+    ["", /Expected a non-empty value\./],
+    [" ", /Expected a non-empty value\./],
+    ["mudab \u20ac", /Value contains characters outside Latin-1 \(above U\+00FF\)\./],
+  ] as const) {
+    const cli = makeCli(() => jsonResponse(fx.stations));
+    assert.equal(await run(["--user-agent", ua, "stations"], cli.deps), 2, JSON.stringify(ua));
+    assert.equal(cli.mt.calls.length, 0);
+    assert.match(cli.err.join("\n"), message);
+  }
+  const ok = makeCli(() => jsonResponse(fx.stations));
+  assert.equal(await run(["--user-agent", "m\u00fcdab\t1", "stations"], ok.deps), 0);
+  assert.equal(ok.mt.last().headers?.["User-Agent"], "m\u00fcdab\t1");
+});
