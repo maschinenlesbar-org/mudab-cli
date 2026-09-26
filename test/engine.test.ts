@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { RequestEngine } from "../src/client/engine.js";
+import { RequestEngine, parseRetryAfter } from "../src/client/engine.js";
 import { MudabApiError, MudabNetworkError, MudabParseError } from "../src/client/errors.js";
 import { makeMockTransport, jsonResponse, rawResponse, jsonBodyOf } from "./helpers.js";
 import * as fx from "./fixtures.js";
@@ -155,4 +155,56 @@ test("the User-Agent and Accept headers are sent", async () => {
   await e.postJson("/x", {});
   assert.equal(mt.last().headers?.["User-Agent"], "ua/1");
   assert.equal(mt.last().headers?.["Accept"], "application/json");
+});
+
+function retryEngine(headers: Record<string, string | string[]>) {
+  const delays: number[] = [];
+  const mt = makeMockTransport(() => ({
+    status: 429,
+    headers: { "content-type": "application/json", ...headers },
+    body: Buffer.from(JSON.stringify({ message: "slow down" })),
+  }));
+  const e = new RequestEngine({
+    transport: mt.transport,
+    maxRetries: 2,
+    sleep: async (ms) => {
+      delays.push(ms);
+    },
+  });
+  return { e, mt, delays };
+}
+
+test("a 429 waits the Retry-After seconds before each retry", async () => {
+  const { e, mt, delays } = retryEngine({ "retry-after": "1" });
+  await assert.rejects(() => e.postJson("/x", {}), (err) => err instanceof MudabApiError && err.status === 429);
+  assert.equal(mt.calls.length, 3);
+  assert.deepEqual(delays, [1000, 1000]);
+});
+
+test("a malformed Retry-After falls back to the linear backoff", async () => {
+  for (const bad of ["-1", "+5", "1.5", "1e3", "0x10", "", "Sunday, 06-Nov-94 08:49:37 GMT", "2026-09-26T10:00:00Z"]) {
+    const { e, delays } = retryEngine({ "retry-after": bad });
+    await assert.rejects(() => e.postJson("/x", {}), MudabApiError);
+    assert.deepEqual(delays, [200, 400], bad);
+  }
+});
+
+test("a Retry-After beyond 30 s is not retried: the error surfaces at once", async () => {
+  const far = new Date(Date.now() + 3_600_000).toUTCString();
+  for (const long of ["31", "999999999", far]) {
+    const { e, mt, delays } = retryEngine({ "retry-after": long });
+    await assert.rejects(() => e.postJson("/x", {}), (err) => err instanceof MudabApiError && err.status === 429);
+    assert.equal(mt.calls.length, 1, long);
+    assert.deepEqual(delays, [], long);
+  }
+});
+
+test("parseRetryAfter reads delay-seconds and IMF-fixdates only", () => {
+  const now = Date.parse("Sat, 26 Sep 2026 10:00:00 GMT");
+  assert.equal(parseRetryAfter("5", now), 5000);
+  assert.equal(parseRetryAfter([" 2 ", "9"], now), 2000);
+  assert.equal(parseRetryAfter("Sat, 26 Sep 2026 10:00:05 GMT", now), 5000);
+  assert.equal(parseRetryAfter("Sat, 26 Sep 2026 09:00:00 GMT", now), 0);
+  assert.equal(parseRetryAfter("1.5", now), undefined);
+  assert.equal(parseRetryAfter(undefined, now), undefined);
 });

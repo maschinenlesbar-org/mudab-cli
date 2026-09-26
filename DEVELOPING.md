@@ -89,7 +89,10 @@ and the canonical host answers directly.
 - **Strict TS** (`strict`, `noUncheckedIndexedAccess`, `noUnusedLocals`) and ESM
   (`module: NodeNext`). Keep passing on Node 20/22/24.
 - **Exit codes** (`run.ts`): help/version → 0; usage → 2; 404 → 4; network → 6; other → 1.
-- **Retry/backoff:** transient `429`/`503` retried up to `maxRetries`, linear backoff.
+- **Retry/backoff:** transient `429`/`503` retried up to `maxRetries`, honouring
+  `Retry-After` (delay-seconds or an IMF-fixdate, parsed strictly by `parseRetryAfter`)
+  up to `MAX_RETRY_AFTER_MS` (30 s; a longer one is not retried, the error surfaces at
+  once), else linear backoff (`retryDelayMs * attempt`).
 - `--base-url` is trusted input but only `http:`/`https:` is accepted: a `file:`,
   `ftp:` or malformed value is a usage error at parse time (`parseBaseUrl`), the
   engine constructor rejects a non-http(s) base URL with `MudabNetworkError` (so a
