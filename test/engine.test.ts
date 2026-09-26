@@ -121,18 +121,44 @@ test("control characters in a plain-text error body are stripped too", async () 
   );
 });
 
-test("a 3xx is NOT followed and hints at the canonical base URL", async () => {
+test("a 3xx is NOT followed and the error names the target", async () => {
   let calls = 0;
   const mt = makeMockTransport(() => {
     calls += 1;
     return { status: 301, headers: { location: "https://www.mudab.de/rest/x" }, body: Buffer.alloc(0) };
   });
-  const e = new RequestEngine({ transport: mt.transport });
+  const e = new RequestEngine({ baseUrl: "https://h.test/b", transport: mt.transport });
   await assert.rejects(
     () => e.postJson("/x", {}),
-    (err) => err instanceof MudabApiError && err.status === 301 && /canonical base URL/.test(err.message),
+    (err) =>
+      err instanceof MudabApiError &&
+      err.status === 301 &&
+      err.location === "https://www.mudab.de/rest/x" &&
+      err.message === "HTTP 301 for POST https://h.test/b/x: redirect to https://www.mudab.de/rest/x not followed",
   );
   assert.equal(calls, 1); // never followed the redirect
+});
+
+test("a 3xx Location is resolved, redacted and sanitised; a missing one is named", async () => {
+  const esc = String.fromCharCode(0x1b);
+  for (const [location, expected] of [
+    ["/other", "HTTP 302 for POST https://h.test/b/x: redirect to https://h.test/other not followed"],
+    ["https://u:pw@evil.test/p", "HTTP 302 for POST https://h.test/b/x: redirect to https://***@evil.test/p not followed"],
+    [`/a${esc}[2Jb`, "HTTP 302 for POST https://h.test/b/x: redirect to https://h.test/a%1B[2Jb not followed"],
+    [undefined, "HTTP 302 for POST https://h.test/b/x: redirect not followed (no Location header)"],
+  ] as const) {
+    const mt = makeMockTransport(() => ({
+      status: 302,
+      headers: location === undefined ? {} : { location },
+      body: Buffer.from("<html>moved</html>"),
+    }));
+    const e = new RequestEngine({ baseUrl: "https://h.test/b", transport: mt.transport });
+    await assert.rejects(
+      () => e.postJson("/x", {}),
+      (err) => err instanceof MudabApiError && err.message === expected,
+      String(location),
+    );
+  }
 });
 
 test("a 503 is retried up to maxRetries then surfaces as a MudabApiError", async () => {

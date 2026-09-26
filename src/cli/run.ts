@@ -5,6 +5,7 @@
 import { CommanderError, type Command } from "commander";
 import { buildProgram, defaultDeps } from "./program.js";
 import type { CliDeps } from "./io.js";
+import { DEFAULT_BASE_URL } from "../client/engine.js";
 import {
   MudabApiError,
   MudabError,
@@ -70,10 +71,16 @@ export async function run(argv: string[], deps: CliDeps = defaultDeps): Promise<
     if (err instanceof MudabApiError) {
       deps.io.err(`Error: ${err.message}`);
       if (err.status === 404) return EXIT.NOT_FOUND;
-      // A 3xx means the base URL redirected (e.g. the legacy MUDABAnwendung path).
-      // The canonical host answers directly, so this is a base-URL misconfiguration
-      // — a usage error, not a generic API failure.
-      if (err.status >= 300 && err.status < 400) return EXIT.USAGE;
+      // Redirects are not followed; the message names the target. A --base-url other
+      // than the canonical one (e.g. the legacy MUDABAnwendung path) is the likely
+      // cause, so point there — but not when the default host itself redirected
+      // (maintenance, a moved API), where the base URL is not the user's mistake.
+      if (err.status >= 300 && err.status < 400) {
+        const baseUrl = (program.opts() as { baseUrl?: string }).baseUrl;
+        if (baseUrl !== undefined && baseUrl.replace(/\/+$/, "") !== DEFAULT_BASE_URL) {
+          deps.io.err(`Hint: --base-url redirects; the canonical base URL is ${DEFAULT_BASE_URL} (the default).`);
+        }
+      }
       return EXIT.OTHER;
     }
     if (err instanceof MudabNetworkError) {

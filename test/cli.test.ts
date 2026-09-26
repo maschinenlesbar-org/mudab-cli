@@ -127,15 +127,23 @@ test("--max-retries above the sane maximum is rejected client-side", async () =>
   assert.equal(cli.mt.calls.length, 0);
 });
 
-test("a redirect from a misconfigured base URL exits 2 (usage)", async () => {
-  const cli = makeCli(() => ({
+test("a redirect exits 1, names the target, and hints at the base URL only when one was given", async () => {
+  const redirect = () => ({
     status: 301,
     headers: { location: "https://www.mudab.de/x" },
     body: Buffer.alloc(0),
-  }));
-  const code = await run(["stations", "--count", "1"], cli.deps);
-  assert.equal(code, 2);
-  assert.match(cli.err.join("\n"), /canonical base URL/);
+  });
+  const own = makeCli(redirect);
+  assert.equal(await run(["--base-url", "https://legacy.test/MUDABAnwendung", "stations", "--count", "1"], own.deps), 1);
+  assert.deepEqual(own.err, [
+    "Error: HTTP 301 for POST https://legacy.test/MUDABAnwendung/STATION_SMALL: redirect to https://www.mudab.de/x not followed",
+    "Hint: --base-url redirects; the canonical base URL is https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements (the default).",
+  ]);
+
+  const dflt = makeCli(redirect);
+  assert.equal(await run(["stations", "--count", "1"], dflt.deps), 1);
+  assert.equal(dflt.err.length, 1);
+  assert.match(dflt.err[0]!, /^Error: HTTP 301 for POST https:\/\/geoportal\.bafg\.de\/.*redirect to https:\/\/www\.mudab\.de\/x not followed$/);
 });
 
 test("an unknown command exits 2", async () => {

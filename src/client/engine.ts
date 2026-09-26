@@ -223,7 +223,7 @@ export class RequestEngine {
    *
    * Redirects are deliberately NOT followed: the canonical host answers directly,
    * and following a cross-origin 3xx blindly is a footgun. A 3xx therefore
-   * surfaces as an error, with a hint to use the canonical base URL.
+   * surfaces as a MudabApiError naming the redirect target (`location`).
    */
   async request(
     method: string,
@@ -267,7 +267,7 @@ export class RequestEngine {
 
       const contentType = String(response.headers["content-type"] ?? "");
       if (status < 200 || status >= 300) {
-        throw this.toApiError(method, url, status, response.body);
+        throw this.toApiError(method, url, status, response.body, response.headers["location"]);
       }
 
       return { data: response.body, contentType, status };
@@ -293,35 +293,56 @@ export class RequestEngine {
     }
   }
 
-  private toApiError(method: string, url: string, status: number, body: Buffer): MudabApiError {
+  private toApiError(
+    method: string,
+    url: string,
+    status: number,
+    body: Buffer,
+    locationHeader?: string,
+  ): MudabApiError {
     const text = body.toString("utf8");
     let detail: string | undefined;
-    if (status >= 300 && status < 400) {
-      detail = "unexpected redirect — use the canonical base URL (default " + DEFAULT_BASE_URL + ")";
-    } else {
-      try {
-        const parsed = JSON.parse(text) as { detail?: unknown; message?: unknown; error?: unknown };
-        let raw: string | undefined;
-        if (typeof parsed?.detail === "string") raw = parsed.detail;
-        else if (typeof parsed?.message === "string") raw = parsed.message;
-        else if (typeof parsed?.error === "string") raw = parsed.error;
-        if (raw !== undefined) {
-          // The parsed string is attacker-controlled: strip control bytes so ANSI/OSC
-          // escapes can't reach the terminal, and cap length so a hostile body can't
-          // flood stderr.
-          detail = cleanDetail(raw);
-        }
-      } catch {
-        // Not JSON. Surface a short, whitespace-collapsed snippet of a textual
-        // body so the failure isn't context-free; skip HTML pages (start with "<").
-        // Strip control bytes too — `\s+` collapses whitespace but leaves ESC/C0
-        // intact, so a hostile plain-text body could still smuggle ANSI/OSC escapes.
-        const snippet = sanitizeServerText(text.trim().replace(/\s+/g, " "));
-        if (snippet.length > 0 && !snippet.startsWith("<")) {
-          detail = snippet.length > MAX_DETAIL_LENGTH ? `${snippet.slice(0, MAX_DETAIL_LENGTH)}…` : snippet;
-        }
+    try {
+      const parsed = JSON.parse(text) as { detail?: unknown; message?: unknown; error?: unknown };
+      let raw: string | undefined;
+      if (typeof parsed?.detail === "string") raw = parsed.detail;
+      else if (typeof parsed?.message === "string") raw = parsed.message;
+      else if (typeof parsed?.error === "string") raw = parsed.error;
+      if (raw !== undefined) {
+        // The parsed string is attacker-controlled: strip control bytes so ANSI/OSC
+        // escapes can't reach the terminal, and cap length so a hostile body can't
+        // flood stderr.
+        detail = cleanDetail(raw);
+      }
+    } catch {
+      // Not JSON. Surface a short, whitespace-collapsed snippet of a textual
+      // body so the failure isn't context-free; skip HTML pages (start with "<").
+      // Strip control bytes too — `\s+` collapses whitespace but leaves ESC/C0
+      // intact, so a hostile plain-text body could still smuggle ANSI/OSC escapes.
+      const snippet = sanitizeServerText(text.trim().replace(/\s+/g, " "));
+      if (snippet.length > 0 && !snippet.startsWith("<")) {
+        detail = snippet.length > MAX_DETAIL_LENGTH ? `${snippet.slice(0, MAX_DETAIL_LENGTH)}…` : snippet;
       }
     }
-    return new MudabApiError({ status, url, method, body: text, detail });
+    // Redirects are not followed; name the target so the user can see where it points.
+    const location =
+      status >= 300 && status < 400 && locationHeader ? redirectTarget(url, locationHeader) : undefined;
+    return new MudabApiError({ status, url, method, body: text, detail, location });
   }
+}
+
+/**
+ * The absolute, printable form of a `Location` header: resolved against the request
+ * URL, userinfo redacted, control characters stripped (it is server text bound for
+ * stderr). An unparseable value is shown sanitised as it came.
+ */
+function redirectTarget(requestUrl: string, location: string): string | undefined {
+  let target: string;
+  try {
+    target = redactUrl(new URL(location, requestUrl).href);
+  } catch {
+    target = location;
+  }
+  const clean = sanitizeServerText(target).trim();
+  return clean === "" ? undefined : clean;
 }
