@@ -6,7 +6,7 @@ import { InvalidArgumentError } from "commander";
 import type { CliDeps } from "./io.js";
 import type { MudabClientOptions } from "../client/client.js";
 import { MudabError, MudabValidationError } from "../client/errors.js";
-import { headerValueProblem } from "../client/validate.js";
+import { baseUrlProblem, headerValueProblem } from "../client/validate.js";
 import { DEFAULT_PAGE_SIZE, MAX_RANGE_END } from "../client/client.js";
 import type { ListRequest, Range } from "../client/types.js";
 
@@ -66,32 +66,14 @@ export function parseHeaderValue(value: string): string {
 }
 
 /**
- * commander value-parser for `--base-url`: an absolute http(s) URL without a query,
- * fragment or surrounding whitespace. A `file:`, `ftp:` or malformed value is a
- * usage error at parse time, before any request.
+ * commander value-parser for `--base-url`: the library's `baseUrlProblem` rule (an
+ * absolute http(s) URL without a query, fragment, surrounding whitespace or control
+ * characters), whose reason becomes a usage error at parse time, before any request.
+ * The engine enforces the same rule for library callers.
  */
 export function parseBaseUrl(value: string): string {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new InvalidArgumentError("Expected an absolute http(s) URL.");
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new InvalidArgumentError(
-      `Unsupported scheme "${url.protocol}". Expected an http(s) URL.`,
-    );
-  }
-  // Paths are appended to the base URL as a string, so a query or fragment would
-  // swallow every request path ("http://h/#f" posts to "/" for every command).
-  if (/[?#]/.test(value)) {
-    throw new InvalidArgumentError("A base URL cannot have a query (?) or fragment (#).");
-  }
-  // new URL() trims surrounding whitespace silently; the raw value is what the
-  // engine uses, so reject it rather than guess.
-  if (value !== value.trim()) {
-    throw new InvalidArgumentError("A base URL cannot have surrounding whitespace.");
-  }
+  const reason = baseUrlProblem(value);
+  if (reason !== undefined) throw new InvalidArgumentError(reason);
   return value;
 }
 

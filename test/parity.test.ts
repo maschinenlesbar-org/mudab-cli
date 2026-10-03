@@ -104,3 +104,30 @@ test("parity: tab and Latin-1 in userAgent pass on both sides", async () => {
   assertSameRequests(["--user-agent", ua], cli, lib);
   assert.equal(lib.requests[0]!.headers?.["User-Agent"], ua);
 });
+
+// ---- #4 (PAT-1): surrounding whitespace in the base URL is the library's rule ----
+
+test("parity: a base URL with surrounding whitespace or a control character is rejected by both, with no request", async () => {
+  for (const baseUrl of [" https://h.example/x ", "https://h.example/api ", " https://h.example/api", "https://h.example/x\n", "https://h.example/a\tb"]) {
+    const { cli, lib } = await parity(["--compact", "--base-url", baseUrl, "stations"], (transport) =>
+      new MudabClient({ transport, baseUrl }).stations(),
+    );
+    assert.equal(cli.code, 2, JSON.stringify(baseUrl));
+    assert.equal(cli.requests.length, 0, JSON.stringify(baseUrl));
+    assert.equal(lib.ok, false, JSON.stringify(baseUrl));
+    assert.equal(lib.error?.name, "MudabValidationError", JSON.stringify(baseUrl));
+    assert.equal(lib.requests.length, 0, JSON.stringify(baseUrl));
+    const reason = lib.error!.message.replace(/^Invalid baseUrl: /, "");
+    assert.ok(cli.err.includes(`is invalid. ${reason}`), `${JSON.stringify(baseUrl)}: ${cli.err}`);
+  }
+});
+
+test("parity: a clean base URL with a path prefix and a trailing slash works on both sides", async () => {
+  const baseUrl = "https://h.example/mirror/";
+  const { cli, lib } = await parity(["--compact", "--base-url", baseUrl, "stations"], (transport) =>
+    new MudabClient({ transport, baseUrl }).stations(),
+    () => jsonResponse(fx.stations),
+  );
+  assertSameRequests(["--base-url", baseUrl], cli, lib);
+  assert.equal(lib.requests[0]!.url, "https://h.example/mirror/STATION_SMALL");
+});

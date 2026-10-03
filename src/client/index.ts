@@ -28,7 +28,7 @@ export {
   MudabParseError,
   redactUrl,
 } from "./errors.js";
-export { assertValid, headerNameProblem, headerValueProblem } from "./validate.js";
+export { assertValid, baseUrlProblem, headerNameProblem, headerValueProblem } from "./validate.js";
 export type { Problem } from "./validate.js";
 
 export * from "./types.js";

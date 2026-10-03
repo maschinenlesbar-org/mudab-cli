@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { assertValid, type Problem } from "../src/client/validate.js";
+import { assertValid, baseUrlProblem, type Problem } from "../src/client/validate.js";
 import { MudabError, MudabValidationError } from "../src/client/errors.js";
 import * as library from "../src/index.js";
 import { MudabClient } from "../src/client/client.js";
@@ -79,4 +79,28 @@ test("parity() runs one input through run() and the library on recording transpo
     error: { name: "MudabValidationError", message: "Invalid x: y" },
     requests: [],
   });
+});
+
+test("baseUrlProblem accepts http(s) URLs with a path, userinfo or trailing slash", () => {
+  for (const ok of ["https://h.example", "http://h.example/x/", "https://u:p@h.example/mudab"]) {
+    assert.equal(baseUrlProblem(ok), undefined, ok);
+  }
+});
+
+test("baseUrlProblem names what is wrong, without repeating the value", () => {
+  for (const [bad, reason] of [
+    ["", "Expected an absolute http(s) URL."],
+    ["not a url", "Expected an absolute http(s) URL."],
+    ["ftp://h.example/x", 'Unsupported scheme "ftp:". Expected an http(s) URL.'],
+    ["https://h.example/x?a=1", "A base URL cannot have a query (?) or fragment (#)."],
+    ["https://h.example/x#f", "A base URL cannot have a query (?) or fragment (#)."],
+    [" https://h.example/x", "A base URL cannot have surrounding whitespace."],
+    ["https://h.example/x ", "A base URL cannot have surrounding whitespace."],
+    ["https://h.example/x\n", "A base URL cannot have surrounding whitespace."],
+    ["https://h.example/a\tb", "A base URL cannot contain control characters."],
+    ["https://h.example/a\u007fb", "A base URL cannot contain control characters."],
+  ] as const) {
+    assert.equal(baseUrlProblem(bad), reason, JSON.stringify(bad));
+  }
+  assert.equal(baseUrlProblem(5 as never), "Expected a string, got 5.");
 });

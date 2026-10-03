@@ -13,7 +13,7 @@ import {
   MudabValidationError,
   redactUrl,
 } from "./errors.js";
-import { assertValid, headerNameProblem, headerValueProblem } from "./validate.js";
+import { assertValid, baseUrlProblem, headerNameProblem, headerValueProblem } from "./validate.js";
 
 export const DEFAULT_BASE_URL = "https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements";
 const DEFAULT_USER_AGENT = "mudab-cli";
@@ -215,11 +215,15 @@ export class RequestEngine {
   private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(options: EngineOptions = {}) {
-    this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
     // Re-check the base-URL scheme here, not only in the default transport: a
     // library consumer that injects a custom transport would otherwise get no
-    // gating at all, and could be steered to a non-http(s) scheme.
-    assertHttpScheme(this.baseUrl);
+    // gating at all, and could be steered to a non-http(s) scheme. The raw value is
+    // checked, before the trailing slashes are stripped: surrounding whitespace or a
+    // control character, which new URL() drops silently, would end up in every
+    // request URL (`/x%20/STATION_SMALL`).
+    const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
+    assertHttpScheme(baseUrl);
+    this.baseUrl = assertValid("baseUrl", baseUrl, baseUrlProblem).replace(/\/+$/, "");
     this.transport = options.transport ?? nodeHttpTransport;
     // Header values are checked up front: a blank one would be sent as is, a CR/LF
     // would reach a custom transport, and the default transport would fail late with

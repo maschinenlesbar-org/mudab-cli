@@ -311,3 +311,12 @@ test("the engine checks userAgent and defaultHeaders before any request", () => 
   assert.equal(headerValueProblem(" "), "Expected a non-empty value.");
   assert.equal(headerNameProblem("X-Trace-Id"), undefined);
 });
+
+test("the engine checks the raw base URL, before stripping trailing slashes", () => {
+  const mt = makeMockTransport(() => jsonResponse({}));
+  assert.throws(
+    () => new RequestEngine({ baseUrl: "https://h.example/x/ ", transport: mt.transport }),
+    (err) => err instanceof MudabValidationError && err.message === "Invalid baseUrl: A base URL cannot have surrounding whitespace.",
+  );
+  assert.equal(mt.calls.length, 0);
+});
