@@ -79,7 +79,11 @@ export class MudabApiError extends MudabError {
 /** A transport-level failure (DNS, connection reset, timeout, ...). */
 export class MudabNetworkError extends MudabError {}
 
-/** A client-side validation error (e.g. a bad --compartment) — no request made. */
+/**
+ * A rejected input (a bad option, range or compartment), raised by the library before
+ * any request is made. Every library-side input rule throws it, with the message
+ * `Invalid <name>: <reason>`; the CLI reports it as a usage error (exit 2).
+ */
 export class MudabValidationError extends MudabError {}
 
 /** The response body could not be parsed as the expected JSON shape. */

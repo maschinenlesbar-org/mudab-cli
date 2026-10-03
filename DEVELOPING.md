@@ -30,6 +30,7 @@ src/
     http.ts      # Transport interface + default node:http/https transport
     engine.ts    # URL building, POST+JSON, retry/backoff, JSON decode, error mapping
     errors.ts    # MudabError / MudabApiError / MudabNetworkError / MudabValidationError / MudabParseError
+    validate.ts  # the Problem type + assertValid(): input rules shared by library and CLI
     client.ts    # MudabClient — one method per endpoint, defensive row extraction
     index.ts
   cli/
@@ -83,6 +84,10 @@ the CLI adds a hint pointing at the canonical base URL.
 - `cli.test.ts` — the full CLI via `run()` with a mocked client: paging defaults,
   `--all`, `--compartment`, the offline `compartments`, the `--user-agent`
   control-char guard, and exit codes.
+- `validate.test.ts` — `assertValid`, the `run.ts` mapping of `MudabValidationError`,
+  and the `parity()` helper (`test/helpers.ts`), which sends one input through `run()`
+  and through the library, each on a recording mock transport, so a test can assert
+  both give the same outcome.
 
 ## Conventions to keep
 
@@ -99,6 +104,14 @@ the CLI adds a hint pointing at the canonical base URL.
   engine options (`timeoutMs` 0..2³¹−1, `maxRetries` 0..`MAX_RETRIES` = 10 — shared with
   `--max-retries` —, `retryDelayMs` 0..30 000, `maxResponseBytes` 0..2⁵³−1), the
   request's `range` (see the quirks table) and `parameters()`'s compartment.
+- **Input validation** ([`validate.ts`](src/client/validate.ts)): a rule is a pure
+  `<thing>Problem(value)` function that returns why a value is invalid, or `undefined`.
+  The library enforces it with `assertValid(name, value, problem)` before any request,
+  which throws `MudabValidationError` (extends `MudabError`, exported) with the message
+  `Invalid <name>: <reason>`; a method that returns a promise rejects with it. The CLI's
+  option parsers call the same `…Problem` functions, so an input gets the same outcome
+  on both sides, and `run.ts` reports a `MudabValidationError` raised in an action as a
+  usage error (`Error: <message>`, exit 2).
 - `--base-url` is trusted input but only `http:`/`https:` is accepted: a `file:`,
   `ftp:` or malformed value, a query or fragment (paths are appended as a string, so
   they would swallow every resource path) or surrounding whitespace is a usage error
