@@ -6,11 +6,8 @@ import { InvalidArgumentError } from "commander";
 import type { CliDeps } from "./io.js";
 import type { MudabClientOptions } from "../client/client.js";
 import { MudabError, MudabValidationError } from "../client/errors.js";
-import { MAX_RANGE_END } from "../client/client.js";
-import type { FilterRequest } from "../client/types.js";
-
-/** Default `range.count` — MUDAB returns the WHOLE table when no range is sent. */
-export const DEFAULT_COUNT = 100;
+import { DEFAULT_PAGE_SIZE, MAX_RANGE_END } from "../client/client.js";
+import type { ListRequest, Range } from "../client/types.js";
 
 /**
  * commander value-parser: a plain base-10 non-negative integer.
@@ -147,7 +144,7 @@ export function toEngineOptions(global: GlobalOptions): MudabClientOptions {
 export function addListOptions(cmd: Command): Command {
   return cmd
     .option("--from <n>", `skip this many rows (range.from; from + count at most ${MAX_RANGE_END})`, parseRangeInt)
-    .option("--count <n>", `max rows to return (default ${DEFAULT_COUNT})`, parseRangeInt)
+    .option("--count <n>", `max rows to return (default ${DEFAULT_PAGE_SIZE})`, parseRangeInt)
     .option(
       "--all",
       "return the whole table (omit the range — can be very large; not combinable with --from/--count)",
@@ -155,31 +152,26 @@ export function addListOptions(cmd: Command): Command {
 }
 
 /**
- * Build the request body from parsed list options — a `range` (paging) only.
- *
- * `range` is omitted entirely with `--all`; otherwise `count` defaults to
- * {@link DEFAULT_COUNT} so a bare command never dumps a whole table, and `from`
- * defaults to 0 (the server answers a count-only range with an HTTP 500). The end
- * of the range (`from + count`) must not exceed {@link MAX_RANGE_END}: the server
- * refuses a larger one with an HTML 403, and repeated refusals may get the client
- * blocked.
+ * Map the parsed list options onto the library's {@link ListRequest}: `--all` becomes
+ * `{ all: true }`, `--from`/`--count` the range. The library completes the range to
+ * its default page (`from` 0, `count` `DEFAULT_PAGE_SIZE`) and checks it, end of
+ * range included, before any request. `--all` with `--from`/`--count` is a usage
+ * error here, worded with the flags.
  */
-export function buildFilterRequest(opts: ListOptions): FilterRequest {
+export function buildFilterRequest(opts: ListOptions): ListRequest {
   if (opts.all) {
     if (opts.from !== undefined || opts.count !== undefined) {
       throw new MudabValidationError("--all cannot be combined with --from/--count.");
     }
-    return {};
+    return { all: true };
   }
-  const from = opts.from ?? 0;
-  const count = opts.count ?? DEFAULT_COUNT;
-  if (from + count > MAX_RANGE_END) {
-    throw new MudabValidationError(
-      `--from + --count (default ${DEFAULT_COUNT}) must not exceed ${MAX_RANGE_END}: ` +
-        "the server refuses a larger range end with HTTP 403. Use --all for the whole table.",
-    );
+  const range: Range = {};
+  if (opts.from !== undefined) range.from = opts.from;
+  if (opts.count !== undefined) {
+    range.from = opts.from ?? 0;
+    range.count = opts.count;
   }
-  return { range: { from, count } };
+  return range.from === undefined ? {} : { range };
 }
 
 /**

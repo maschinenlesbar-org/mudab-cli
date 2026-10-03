@@ -60,10 +60,10 @@ OpenAPI spec (`bundesAPI/mudab-api`) is unreliable, so trust the live behaviour:
 | **Base URL** | `https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements`. The older `MUDABAnwendung` path 301-redirects away. | `engine.ts` `DEFAULT_BASE_URL` |
 | **Response wrapper key** | A single-key object, but the key is NOT reliably the path name (`/STATION_SMALL` → key `V_STATION_SMALL`). | `client.ts` `extractRows` takes the array under the one key (or a bare array); any other 200 reply — an error object, a second key, `null`, an empty body — is a `MudabParseError` naming what came back (exit 1), never `[]` |
 | **`range` requires `from`** | A count-only range (`{count}` without `from`) is answered with **HTTP 500**. | `shared.ts` `buildFilterRequest` always sends `from` (default 0); the client rejects a count-only range (`MudabValidationError`) |
-| **Range end is a 32-bit int** | `from + count` above 2³¹−1 (2147483647) gets an HTML **403 Forbidden** from the front end; on 2026-09-26 the host then stopped answering the client altogether. | `client.ts` `MAX_RANGE_END` + `assertRange`; the CLI bounds `--from`/`--count` and their sum (exit 2) |
+| **Range end is a 32-bit int** | `from + count` above 2³¹−1 (2147483647) gets an HTML **403 Forbidden** from the front end; on 2026-09-26 the host then stopped answering the client altogether. | `client.ts` `MAX_RANGE_END` + `normalizeRange` (the defaulted count included); the CLI bounds `--from`/`--count` each (exit 2) and reports the library's range-end error as a usage error with an `--all` hint |
 | **`filter` / `orderby` ignored** | Despite every endpoint being a "filterbare Liste", the live server **ignores** filter and orderby — a filter that should match nothing still returns the full page. | The CLI exposes NO filter/sort options; `FilterRequest` documents the no-op |
 | **`Compartment` enum incomplete** | Spec lists `BL/CW/CS/CF`; the data also contains `MM`. | `types.ts` types `Compartment` as an open `string` |
-| **Empty body** | Returns the WHOLE table (measurements ≈ 187,000 rows / 42 MB on 2026-09-15). | CLI defaults `range.count` to 100; `--all` omits the range |
+| **Empty body** | Returns the WHOLE table (measurements ≈ 187,000 rows / 42 MB on 2026-09-15). | The client sends a default page: `normalizeRange` fills `from` 0 and `count` `DEFAULT_PAGE_SIZE` (100); `{ all: true }` (CLI `--all`) sends no range. The CLI passes `--from`/`--count`/`--all` through and has no default of its own |
 
 Redirects are **not** followed — following a cross-origin POST redirect blindly is a
 footgun, and the canonical host answers directly. A 3xx surfaces as a `MudabApiError`
@@ -103,7 +103,8 @@ the CLI adds a hint pointing at the canonical base URL.
 - **Library input is checked before any request** (`MudabValidationError`): the numeric
   engine options (`timeoutMs` 0..2³¹−1, `maxRetries` 0..`MAX_RETRIES` = 10 — shared with
   `--max-retries` —, `retryDelayMs` 0..30 000, `maxResponseBytes` 0..2⁵³−1), the
-  request's `range` (see the quirks table) and `parameters()`'s compartment.
+  request's `range` and `all` (see the quirks table; `normalizeRange`, exported, shows
+  what a list method sends) and `parameters()`'s compartment.
 - **Input validation** ([`validate.ts`](src/client/validate.ts)): a rule is a pure
   `<thing>Problem(value)` function that returns why a value is invalid, or `undefined`.
   The library enforces it with `assertValid(name, value, problem)` before any request,

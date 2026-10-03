@@ -66,6 +66,9 @@ export async function run(argv: string[], deps: CliDeps = defaultDeps): Promise<
     // Client-side validation (e.g. --all combined with --from/--count) — a usage error.
     if (err instanceof MudabValidationError) {
       deps.io.err(`Error: ${err.message}`);
+      if (/^Invalid range: from \+ count/.test(err.message)) {
+        deps.io.err("Hint: --from + --count is the end of the range; use --all for the whole table.");
+      }
       return EXIT.USAGE;
     }
     if (err instanceof MudabApiError) {

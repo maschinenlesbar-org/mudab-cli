@@ -178,8 +178,8 @@ test("--from/--count are bounded to 2^31 - 1, and so is their sum", async () => 
     [["--from", "2147483648"], /Must be <= 2147483647\./],
     [["--count", "999999999999"], /Must be <= 2147483647\./],
     [["--count", "99999999999999999999"], /Must be <= 2147483647\./],
-    [["--from", "2147483647", "--count", "1"], /--from \+ --count \(default 100\) must not exceed 2147483647.*HTTP 403.*--all/],
-    [["--from", "2147483600"], /must not exceed 2147483647/],
+    [["--from", "2147483647", "--count", "1"], /^Error: Invalid range: from \+ count must not exceed 2147483647 .*HTTP 403.*got 2147483648\.\nHint: .*--all/],
+    [["--from", "2147483600"], /from \+ count \(count defaults to 100\) must not exceed 2147483647/],
   ] as const) {
     const cli = makeCli(() => jsonResponse(fx.stations));
     assert.equal(await run(["stations", ...args], cli.deps), 2, args.join(" "));

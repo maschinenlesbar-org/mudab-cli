@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MudabClient, extractRows } from "../src/client/client.js";
+import { MudabClient, extractRows, normalizeRange, DEFAULT_PAGE_SIZE, MAX_RANGE_END } from "../src/client/client.js";
 import { MudabNetworkError, MudabParseError, MudabValidationError } from "../src/client/errors.js";
 import { makeMockTransport, jsonResponse, jsonBodyOf, rawResponse } from "./helpers.js";
 import * as fx from "./fixtures.js";
@@ -130,12 +130,35 @@ test("the client checks the range before sending it", async () => {
     );
     assert.equal(mt.calls.length, 0, JSON.stringify(range));
   }
-  // The largest accepted end, and a from-only range, still go out as given.
+  // The largest accepted end goes out as given; a from-only range gets the default count.
   const { client, mt } = clientFor(fx.stations);
   await client.stations({ range: { from: 2147483646, count: 1 } });
   await client.stations({ range: { from: 5 } });
   assert.deepEqual(jsonBodyOf(mt.calls[0]!), { range: { from: 2147483646, count: 1 } });
-  assert.deepEqual(jsonBodyOf(mt.calls[1]!), { range: { from: 5 } });
+  assert.deepEqual(jsonBodyOf(mt.calls[1]!), { range: { from: 5, count: DEFAULT_PAGE_SIZE } });
+});
+
+test("normalizeRange completes a range to the default page and leaves { all: true } without one", () => {
+  assert.equal(DEFAULT_PAGE_SIZE, 100);
+  assert.deepEqual(normalizeRange(), { range: { from: 0, count: 100 } });
+  assert.deepEqual(normalizeRange({}), { range: { from: 0, count: 100 } });
+  assert.deepEqual(normalizeRange({ range: {} }), { range: { from: 0, count: 100 } });
+  assert.deepEqual(normalizeRange({ range: { from: 7 } }), { range: { from: 7, count: 100 } });
+  assert.deepEqual(normalizeRange({ range: { from: 7, count: 3 } }), { range: { from: 7, count: 3 } });
+  assert.deepEqual(normalizeRange({ all: false }), { range: { from: 0, count: 100 } });
+  assert.deepEqual(normalizeRange({ all: true }), {});
+  assert.deepEqual(normalizeRange({ all: true, orderby: { col: "X" } }), { orderby: { col: "X" } });
+  const once = normalizeRange({ range: { from: 2 } });
+  assert.deepEqual(normalizeRange(once), once);
+  assert.throws(() => normalizeRange({ all: true, range: { from: 0 } }), MudabValidationError);
+  assert.throws(() => normalizeRange({ all: 1 } as never), { message: /^Invalid all: expected a boolean, got 1\.$/ });
+  assert.throws(
+    () => normalizeRange({ range: { from: MAX_RANGE_END - 99 } }),
+    { message: /^Invalid range: from \+ count \(count defaults to 100\) must not exceed 2147483647 .*got 2147483648\.$/ },
+  );
+  assert.deepEqual(normalizeRange({ range: { from: MAX_RANGE_END - 100 } }), {
+    range: { from: MAX_RANGE_END - 100, count: 100 },
+  });
 });
 
 test("parameters() rejects an unknown compartment with a MudabValidationError, no request", async () => {

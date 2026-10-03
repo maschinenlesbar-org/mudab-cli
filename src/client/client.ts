@@ -5,17 +5,20 @@
 // Every endpoint is a POST that takes a FilterRequest (filter / range / orderby)
 // and returns a single-key object wrapping the row array. There is NO auth. Only
 // `range` is honoured, and it needs a `from` (the server ignores filter/orderby,
-// and answers a count-only range with HTTP 500); filter the rows yourself.
+// and answers a count-only range with HTTP 500); filter the rows yourself. Without
+// a range the server returns the WHOLE table, so every list method sends a default
+// page (from 0, count DEFAULT_PAGE_SIZE = 100) unless asked for `{ all: true }`.
 //
 //   const c = new MudabClient();
 //   await c.stations({ range: { from: 0, count: 10 } });
 //   const water = await c.parameters({ range: { from: 0, count: 100 } }, "wasser");
-//   const cw = (await c.parameters()).filter((p) => p.COMPT_DS === "CW"); // whole table
+//   const cw = (await c.parameters({ all: true })).filter((p) => p.COMPT_DS === "CW"); // whole table
 
 import { RequestEngine, cleanDetail, type EngineOptions } from "./engine.js";
 import { MudabParseError, MudabValidationError } from "./errors.js";
 import type {
   FilterRequest,
+  ListRequest,
   HelcomPLCStation,
   Messstation,
   MesswertPLC,
@@ -120,13 +123,44 @@ function rangeInt(name: string, value: unknown): number | undefined {
 }
 
 /**
- * Check a request's `range` before it is sent: `from`/`count` integers from 0, a
- * `count` only together with a `from` (the server answers a count-only range with
- * HTTP 500), and `from + count` at most {@link MAX_RANGE_END}.
+ * Rows a list method asks for when the request sets no `count`. MUDAB answers a
+ * request without a range with the WHOLE table (measurements ~187,000 rows / ~42 MB
+ * on 2026-09-15), so the client always sends a page unless the caller opts out
+ * with `{ all: true }`.
  */
-function assertRange(req: FilterRequest | undefined): void {
-  const range: unknown = req?.range;
-  if (range === undefined) return;
+export const DEFAULT_PAGE_SIZE = 100;
+
+/**
+ * The request body a list method sends for `req`, checked before anything is sent.
+ *
+ * - `{ all: true }` sends no range (the whole table); `all` together with a `range`,
+ *   or an `all` that is not a boolean, is a `MudabValidationError`.
+ * - Otherwise the range is completed to a page: a missing `count` becomes
+ *   {@link DEFAULT_PAGE_SIZE}, and with no range at all `from` becomes 0.
+ * - `from`/`count` must be integers from 0, a `count` needs a `from` (the server
+ *   answers a count-only range with HTTP 500), and `from + count` must not exceed
+ *   {@link MAX_RANGE_END}, defaulted count included.
+ *
+ * `filter`/`orderby` are passed through (the server ignores them); `all` is never
+ * sent. Idempotent for a request without `all`.
+ */
+export function normalizeRange(req: ListRequest = {}): FilterRequest {
+  const { all, ...body } = req;
+  if (all !== undefined && typeof all !== "boolean") {
+    throw new MudabValidationError(
+      `Invalid all: expected a boolean, got ${typeof all === "string" ? JSON.stringify(all) : String(all)}.`,
+    );
+  }
+  const range: unknown = body.range;
+  if (all === true) {
+    if (range !== undefined) {
+      throw new MudabValidationError(
+        "Invalid range: all (the whole table) cannot be combined with a range.",
+      );
+    }
+    return body;
+  }
+  if (range === undefined) return { ...body, range: { from: 0, count: DEFAULT_PAGE_SIZE } };
   if (range === null || typeof range !== "object" || Array.isArray(range)) {
     throw new MudabValidationError(
       `Invalid range: expected an object with from and count, got ${JSON.stringify(range)}.`,
@@ -134,21 +168,31 @@ function assertRange(req: FilterRequest | undefined): void {
   }
   const { from: rawFrom, count: rawCount } = range as Record<string, unknown>;
   const from = rangeInt("range.from", rawFrom);
-  const count = rangeInt("range.count", rawCount);
-  if (count !== undefined && from === undefined) {
+  const givenCount = rangeInt("range.count", rawCount);
+  if (givenCount !== undefined && from === undefined) {
     throw new MudabValidationError(
       "Invalid range: a count needs a from (the server answers a count-only range with HTTP 500), " +
         "e.g. { from: 0, count: 10 }.",
     );
   }
-  if (from !== undefined && count !== undefined && from + count > MAX_RANGE_END) {
+  const count = givenCount ?? DEFAULT_PAGE_SIZE;
+  const start = from ?? 0;
+  if (start + count > MAX_RANGE_END) {
     throw new MudabValidationError(
-      `Invalid range: from + count must not exceed ${MAX_RANGE_END} ` +
-        `(the server refuses a larger range end with HTTP 403), got ${from + count}.`,
+      `Invalid range: from + count${givenCount === undefined ? ` (count defaults to ${DEFAULT_PAGE_SIZE})` : ""} ` +
+        `must not exceed ${MAX_RANGE_END} (the server refuses a larger range end with HTTP 403), ` +
+        `got ${start + count}.`,
     );
   }
+  return { ...body, range: { from: start, count } };
 }
 
+/**
+ * One method per MUDAB endpoint. Each list method takes a {@link ListRequest}: the
+ * range is completed to a default page ({@link normalizeRange}), `{ all: true }`
+ * fetches the whole table, and a bad range rejects with a `MudabValidationError`
+ * before any request.
+ */
 export class MudabClient {
   private readonly engine: RequestEngine;
 
@@ -156,20 +200,24 @@ export class MudabClient {
     this.engine = new RequestEngine(options);
   }
 
-  /** POST a FilterRequest to `resource` and return the extracted row array. */
-  private async filterList<T>(resource: string, req: FilterRequest = {}): Promise<T[]> {
-    assertRange(req);
-    const res = await this.engine.postJson<unknown>(resource, req);
+  /**
+   * POST the request to `resource` (completed to a default page by
+   * {@link normalizeRange}, or with no range for `{ all: true }`) and return the
+   * extracted row array.
+   */
+  private async filterList<T>(resource: string, req: ListRequest = {}): Promise<T[]> {
+    const body = normalizeRange(req);
+    const res = await this.engine.postJson<unknown>(resource, body);
     return extractRows<T>(res, resource);
   }
 
   /** Measurement stations (`STATION_SMALL`). */
-  stations(req?: FilterRequest): Promise<Messstation[]> {
+  stations(req?: ListRequest): Promise<Messstation[]> {
     return this.filterList("/STATION_SMALL", req);
   }
 
   /** Project stations (`PROJECTSTATION_SMALL`). */
-  projectStations(req?: FilterRequest): Promise<ProjectStation[]> {
+  projectStations(req?: ListRequest): Promise<ProjectStation[]> {
     return this.filterList("/PROJECTSTATION_SMALL", req);
   }
 
@@ -178,28 +226,28 @@ export class MudabClient {
    * compartment-specific endpoint (`MV_PARAMETER_{BIOLOGIE,BIOTA,WASSER,SEDIMENT}`);
    * any other value rejects with a `MudabValidationError` before a request is made.
    */
-  async parameters(req?: FilterRequest, compartment?: ParameterCompartment): Promise<Parameter[]> {
+  async parameters(req?: ListRequest, compartment?: ParameterCompartment): Promise<Parameter[]> {
     const resource = compartment === undefined ? "/MV_PARAMETER" : compartmentEndpoint(compartment);
     return this.filterList(resource, req);
   }
 
   /** Individual station measurements (`MV_STATION_MSMNT`) — a very large table. */
-  measurements(req?: FilterRequest): Promise<ParameterValue[]> {
+  measurements(req?: ListRequest): Promise<ParameterValue[]> {
     return this.filterList("/MV_STATION_MSMNT", req);
   }
 
   /** HELCOM PLC stations (`V_PLC_STATION`). */
-  plcStations(req?: FilterRequest): Promise<HelcomPLCStation[]> {
+  plcStations(req?: ListRequest): Promise<HelcomPLCStation[]> {
     return this.filterList("/V_PLC_STATION", req);
   }
 
   /** Parameters measured at PLC stations (`V_GEMESSENE_PARA_PLC`). */
-  plcParameters(req?: FilterRequest): Promise<ParameterPLC[]> {
+  plcParameters(req?: ListRequest): Promise<ParameterPLC[]> {
     return this.filterList("/V_GEMESSENE_PARA_PLC", req);
   }
 
   /** Measured values at PLC stations (`V_MESSWERTE_PLC`). */
-  plcMeasurements(req?: FilterRequest): Promise<MesswertPLC[]> {
+  plcMeasurements(req?: ListRequest): Promise<MesswertPLC[]> {
     return this.filterList("/V_MESSWERTE_PLC", req);
   }
 }

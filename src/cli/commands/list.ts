@@ -7,11 +7,11 @@ import { Option, type Command } from "commander";
 import type { CliDeps } from "../io.js";
 import { PARAMETER_COMPARTMENTS } from "../../client/client.js";
 import type { MudabClient, ParameterCompartment } from "../../client/client.js";
-import type { FilterRequest } from "../../client/types.js";
+import type { ListRequest } from "../../client/types.js";
 import { action, addListOptions, buildFilterRequest, renderJson } from "../shared.js";
 import type { ListOptions } from "../shared.js";
 
-type ListFn = (client: MudabClient, req: FilterRequest) => Promise<unknown>;
+type ListFn = (client: MudabClient, req: ListRequest) => Promise<unknown>;
 
 const LIST_COMMANDS: { name: string; desc: string; run: ListFn }[] = [
   { name: "stations", desc: "List measurement stations (STATION_SMALL)", run: (c, r) => c.stations(r) },

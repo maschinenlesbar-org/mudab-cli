@@ -177,7 +177,8 @@ export interface OrderBy {
 /**
  * The request body shared by every MUDAB endpoint. All fields are optional; an
  * empty body returns the whole table (for measurements ~187,000 rows / ~42 MB on
- * 2026-09-15 — send a `range` unless you mean it).
+ * 2026-09-15). The client's list methods therefore always send a range — a default
+ * page unless the caller passes `{ all: true }` (see {@link ListRequest}).
  *
  * IMPORTANT — verified against the live API: only `range` is honoured. Despite the
  * OpenAPI spec advertising every endpoint as a "filterbare Liste", the live server
@@ -190,4 +191,16 @@ export interface FilterRequest {
   filter?: Filter;
   range?: Range;
   orderby?: OrderBy;
+}
+
+/**
+ * What a list method takes: a {@link FilterRequest} plus `all`, the library's
+ * whole-table opt-out. Without `all`, the client completes the `range` to a default
+ * page (`from` 0, `count` `DEFAULT_PAGE_SIZE` = 100) before sending it; with
+ * `all: true` it sends no range, so the server returns the whole table (for
+ * measurements ~187,000 rows / ~42 MB). `all` itself is never sent, and `all: true`
+ * together with a `range` is a `MudabValidationError`.
+ */
+export interface ListRequest extends FilterRequest {
+  all?: boolean;
 }
