@@ -140,11 +140,8 @@ export function buildFilterRequest(opts: ListOptions): ListRequest {
   }
   const range: Range = {};
   if (opts.from !== undefined) range.from = opts.from;
-  if (opts.count !== undefined) {
-    range.from = opts.from ?? 0;
-    range.count = opts.count;
-  }
-  return range.from === undefined ? {} : { range };
+  if (opts.count !== undefined) range.count = opts.count;
+  return opts.from === undefined && opts.count === undefined ? {} : { range };
 }
 
 /**

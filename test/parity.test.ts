@@ -131,3 +131,21 @@ test("parity: a clean base URL with a path prefix and a trailing slash works on 
   assertSameRequests(["--base-url", baseUrl], cli, lib);
   assert.equal(lib.requests[0]!.url, "https://h.example/mirror/STATION_SMALL");
 });
+
+// ---- #2 (PAT-16): a count-only range gets from 0 in the library ----
+
+test("parity: a count without a from sends from 0 from the CLI and the library", async () => {
+  const cases: [string[], Call][] = [
+    [["--compact", "stations", "--count", "5"], (c) => c.stations({ range: { count: 5 } })],
+    [["--compact", "measurements", "--count", "2147483647"], (c) => c.measurements({ range: { count: 2147483647 } })],
+    [["--compact", "parameters", "--compartment", "wasser", "--count", "1"], (c) => c.parameters({ range: { count: 1 } }, "wasser")],
+  ];
+  for (const [argv, call] of cases) {
+    const { cli, lib } = await parity(argv, (transport) => call(new MudabClient({ transport })), () =>
+      jsonResponse(fx.stations),
+    );
+    assertSameRequests(argv, cli, lib);
+    const body = JSON.parse(lib.requests[0]!.body!.toString()) as { range?: { from?: number } };
+    assert.equal(body.range?.from, 0, argv.join(" "));
+  }
+});

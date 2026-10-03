@@ -89,6 +89,6 @@ mudab plc-measurements --all --compact \
   cannot filter, so any selection needs the whole table: fetch it once and filter the
   result. If it outgrows the cap (exit 6), raise `--max-response-bytes`.
 - **A `range` always sends `from`.** The server answers a count-only range with an
-  HTTP 500, so the CLI always includes `from` (default 0).
+  HTTP 500, so the client always includes `from` (default 0).
 - The data is © its providers — see [DATA_LICENSE.md](DATA_LICENSE.md); terms are not
   stated as open.

@@ -184,8 +184,8 @@ export interface OrderBy {
  * OpenAPI spec advertising every endpoint as a "filterbare Liste", the live server
  * **ignores `filter` and `orderby`** (a filter that should match nothing still
  * returns the full page). They are kept here to mirror the documented schema, but
- * do not rely on them — filter and sort client-side. NB: a `range` MUST include
- * `from` (a count-only range is answered with an HTTP 500).
+ * do not rely on them — filter and sort client-side. NB: the server answers a
+ * count-only range with an HTTP 500, so the client's list methods fill in `from: 0`.
  */
 export interface FilterRequest {
   filter?: Filter;

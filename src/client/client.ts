@@ -5,7 +5,8 @@
 // Every endpoint is a POST that takes a FilterRequest (filter / range / orderby)
 // and returns a single-key object wrapping the row array. There is NO auth. Only
 // `range` is honoured, and it needs a `from` (the server ignores filter/orderby,
-// and answers a count-only range with HTTP 500); filter the rows yourself. Without
+// and answers a count-only range with HTTP 500, so the client fills from 0);
+// filter the rows yourself. Without
 // a range the server returns the WHOLE table, so every list method sends a default
 // page (from 0, count DEFAULT_PAGE_SIZE = 100) unless asked for `{ all: true }`.
 //
@@ -136,9 +137,9 @@ export const DEFAULT_PAGE_SIZE = 100;
  * - `{ all: true }` sends no range (the whole table); `all` together with a `range`,
  *   or an `all` that is not a boolean, is a `MudabValidationError`.
  * - Otherwise the range is completed to a page: a missing `count` becomes
- *   {@link DEFAULT_PAGE_SIZE}, and with no range at all `from` becomes 0.
- * - `from`/`count` must be integers from 0, a `count` needs a `from` (the server
- *   answers a count-only range with HTTP 500), and `from + count` must not exceed
+ *   {@link DEFAULT_PAGE_SIZE} and a missing `from` becomes 0 (the server answers a
+ *   count-only range with HTTP 500, so `from` is always sent).
+ * - `from`/`count` must be integers from 0, and `from + count` must not exceed
  *   {@link MAX_RANGE_END}, defaulted count included.
  *
  * `filter`/`orderby` are passed through (the server ignores them); `all` is never
@@ -169,12 +170,6 @@ export function normalizeRange(req: ListRequest = {}): FilterRequest {
   const { from: rawFrom, count: rawCount } = range as Record<string, unknown>;
   const from = rangeInt("range.from", rawFrom);
   const givenCount = rangeInt("range.count", rawCount);
-  if (givenCount !== undefined && from === undefined) {
-    throw new MudabValidationError(
-      "Invalid range: a count needs a from (the server answers a count-only range with HTTP 500), " +
-        "e.g. { from: 0, count: 10 }.",
-    );
-  }
   const count = givenCount ?? DEFAULT_PAGE_SIZE;
   const start = from ?? 0;
   if (start + count > MAX_RANGE_END) {

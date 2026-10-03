@@ -113,7 +113,6 @@ test("the client rejects a file: base URL before a custom transport sees it", ()
 
 test("the client checks the range before sending it", async () => {
   const cases: [unknown, RegExp][] = [
-    [{ count: 10 }, /a count needs a from \(the server answers a count-only range with HTTP 500\)/],
     [{ from: -5, count: 1 }, /^Invalid range\.from: expected an integer from 0 to 2147483647, got -5\.$/],
     [{ from: 0, count: 1.5 }, /^Invalid range\.count: expected an integer from 0 to 2147483647, got 1\.5\.$/],
     [{ from: 0, count: 2147483648 }, /^Invalid range\.count: .*got 2147483648\.$/],
@@ -145,6 +144,7 @@ test("normalizeRange completes a range to the default page and leaves { all: tru
   assert.deepEqual(normalizeRange({ range: {} }), { range: { from: 0, count: 100 } });
   assert.deepEqual(normalizeRange({ range: { from: 7 } }), { range: { from: 7, count: 100 } });
   assert.deepEqual(normalizeRange({ range: { from: 7, count: 3 } }), { range: { from: 7, count: 3 } });
+  assert.deepEqual(normalizeRange({ range: { count: 3 } }), { range: { from: 0, count: 3 } });
   assert.deepEqual(normalizeRange({ all: false }), { range: { from: 0, count: 100 } });
   assert.deepEqual(normalizeRange({ all: true }), {});
   assert.deepEqual(normalizeRange({ all: true, orderby: { col: "X" } }), { orderby: { col: "X" } });
