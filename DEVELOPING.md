@@ -124,10 +124,11 @@ the CLI adds a hint pointing at the canonical base URL.
   every resource path), surrounding whitespace or a control character anywhere
   (`new URL()` drops them silently, but the raw string is what the engine joins). The
   CLI's `parseBaseUrl` calls it at parse time (usage error); the engine constructor
-  checks the raw `baseUrl` before stripping trailing slashes, so a custom transport
-  never receives a bad one: a non-http(s) base URL or one with a query/fragment
-  throws `MudabNetworkError`, whitespace or a control character `MudabValidationError`
-  (`Invalid baseUrl: <reason>`). The default transport checks every hop. Userinfo is kept
+  checks the raw `baseUrl` before stripping trailing slashes and throws
+  `MudabValidationError` (`Invalid baseUrl: <reason>`), so a custom transport never
+  receives a bad one. A bad base URL is a configuration error, not a transport
+  failure: `MudabNetworkError` is kept for the default transport's per-hop scheme
+  check. Userinfo is kept
   for the request and redacted (`redactUrl`) in every error message.
 - **Scaffold origin:** this repo was scaffolded from `entgeltatlas-cli`; the API-key /
   X-API-Key machinery was stripped because MUDAB needs no auth.

@@ -8,7 +8,6 @@
 import { MAX_TIMEOUT_MS, nodeHttpTransport, type Transport } from "./http.js";
 import {
   MudabApiError,
-  MudabNetworkError,
   MudabParseError,
   MudabValidationError,
   redactUrl,
@@ -30,7 +29,11 @@ export interface RawResponse {
  * NaN, Infinity, too large) makes the constructor throw a MudabValidationError.
  */
 export interface EngineOptions {
-  /** Base URL of the API. Defaults to the canonical geoportal.bafg.de MUDAB base. */
+  /**
+   * Base URL of the API. Defaults to the canonical geoportal.bafg.de MUDAB base. An
+   * absolute http(s) URL without a query, fragment, surrounding whitespace or control
+   * characters (`baseUrlProblem`), else a MudabValidationError.
+   */
   baseUrl?: string;
   /** Swappable transport. Defaults to the built-in node http/https transport. */
   transport?: Transport;
@@ -137,32 +140,6 @@ export function cleanDetail(raw: string): string {
   return clean.length > MAX_DETAIL_LENGTH ? `${clean.slice(0, MAX_DETAIL_LENGTH)}…` : clean;
 }
 
-/**
- * Reject a base URL whose scheme is not http(s), or that has a query or fragment.
- * The default transport already gates the scheme per hop, but the engine is
- * exported as a library and may be handed a custom transport that does no such
- * check, so gate the configured base URL here too (a `file:`/`ftp:` base URL fails
- * fast with a typed error). Request paths are appended to the base URL as a string,
- * so a `?` or `#` in it would swallow every path: `http://h/?x=1` posts to
- * `/?x=1/STATION_SMALL` and `http://h/#f` to `/`.
- */
-function assertHttpScheme(baseUrl: string): void {
-  let url: URL;
-  try {
-    url = new URL(baseUrl);
-  } catch {
-    throw new MudabNetworkError(`Invalid base URL: ${baseUrl}`);
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new MudabNetworkError(
-      `Unsupported protocol "${url.protocol}" in base URL: ${redactUrl(baseUrl)}`,
-    );
-  }
-  if (/[?#]/.test(baseUrl)) {
-    throw new MudabNetworkError(`Base URL must not contain a query or fragment: ${redactUrl(baseUrl)}`);
-  }
-}
-
 /** Most automatic retries a caller may ask for (the CLI's --max-retries shares it). */
 export const MAX_RETRIES = 10;
 
@@ -215,15 +192,18 @@ export class RequestEngine {
   private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(options: EngineOptions = {}) {
-    // Re-check the base-URL scheme here, not only in the default transport: a
-    // library consumer that injects a custom transport would otherwise get no
-    // gating at all, and could be steered to a non-http(s) scheme. The raw value is
-    // checked, before the trailing slashes are stripped: surrounding whitespace or a
-    // control character, which new URL() drops silently, would end up in every
-    // request URL (`/x%20/STATION_SMALL`).
-    const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
-    assertHttpScheme(baseUrl);
-    this.baseUrl = assertValid("baseUrl", baseUrl, baseUrlProblem).replace(/\/+$/, "");
+    // Check the base URL here, not only in the default transport: a library
+    // consumer that injects a custom transport would otherwise get no gating at all,
+    // and could be steered to a non-http(s) scheme. The raw value is checked, before
+    // the trailing slashes are stripped: surrounding whitespace or a control
+    // character, which new URL() drops silently, would end up in every request URL
+    // (`/x%20/STATION_SMALL`). A bad base URL is a configuration error, so
+    // MudabValidationError (`Invalid baseUrl: <reason>`), not MudabNetworkError,
+    // which a caller may treat as "retry later".
+    this.baseUrl = assertValid("baseUrl", options.baseUrl ?? DEFAULT_BASE_URL, baseUrlProblem).replace(
+      /\/+$/,
+      "",
+    );
     this.transport = options.transport ?? nodeHttpTransport;
     // Header values are checked up front: a blank one would be sent as is, a CR/LF
     // would reach a custom transport, and the default transport would fail late with

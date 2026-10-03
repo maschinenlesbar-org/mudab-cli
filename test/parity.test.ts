@@ -149,3 +149,20 @@ test("parity: a count without a from sends from 0 from the CLI and the library",
     assert.equal(body.range?.from, 0, argv.join(" "));
   }
 });
+
+// ---- #5 (PAT-2): a malformed base URL is a validation error, not a network error ----
+
+test("parity: a malformed base URL is a MudabValidationError in the library and a usage error in the CLI", async () => {
+  for (const baseUrl of ["https://h.example/x?a=1", "https://h.example/x#f", "ftp://h.example/x", "", "not a url", "file:///etc/passwd"]) {
+    const { cli, lib } = await parity(["--compact", "--base-url", baseUrl, "stations"], (transport) =>
+      new MudabClient({ transport, baseUrl }).stations(),
+    );
+    assert.equal(cli.code, 2, JSON.stringify(baseUrl));
+    assert.equal(cli.requests.length, 0, JSON.stringify(baseUrl));
+    assert.equal(lib.ok, false, JSON.stringify(baseUrl));
+    assert.equal(lib.error?.name, "MudabValidationError", JSON.stringify(baseUrl));
+    assert.equal(lib.requests.length, 0, JSON.stringify(baseUrl));
+    const reason = lib.error!.message.replace(/^Invalid baseUrl: /, "");
+    assert.ok(cli.err.includes(`is invalid. ${reason}`), `${JSON.stringify(baseUrl)}: ${cli.err}`);
+  }
+});

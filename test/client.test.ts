@@ -106,7 +106,7 @@ test("the client rejects a file: base URL before a custom transport sees it", ()
   const mt = makeMockTransport(() => jsonResponse(fx.stations));
   assert.throws(
     () => new MudabClient({ baseUrl: "file:///etc/passwd", transport: mt.transport }),
-    MudabNetworkError,
+    (err) => err instanceof MudabValidationError && !(err instanceof MudabNetworkError),
   );
   assert.equal(mt.calls.length, 0);
 });

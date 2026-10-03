@@ -15,7 +15,10 @@ test("buildUrl normalises the path (parameters travel in the body)", () => {
 test("the engine rejects a non-http(s) base URL before any request", () => {
   const mt = makeMockTransport(() => jsonResponse(fx.parameters));
   for (const baseUrl of ["file:///etc/passwd", "ftp://example.org", "notaurl"]) {
-    assert.throws(() => new RequestEngine({ baseUrl, transport: mt.transport }), MudabNetworkError);
+    assert.throws(
+      () => new RequestEngine({ baseUrl, transport: mt.transport }),
+      (err) => err instanceof MudabValidationError && !(err instanceof MudabNetworkError),
+    );
   }
   assert.equal(mt.calls.length, 0);
 });
@@ -272,7 +275,7 @@ test("userinfo in the base URL is redacted from error messages but still sent", 
   assert.equal(mt.last().url, "http://user:secret@127.0.0.1:1/base/STATION_SMALL");
   assert.throws(
     () => new RequestEngine({ baseUrl: "ftp://user:secret@example.org/" }),
-    (err) => err instanceof MudabNetworkError && !err.message.includes("secret"),
+    (err) => err instanceof MudabValidationError && !err.message.includes("secret"),
   );
   assert.equal(redactUrl("https://example.org/x"), "https://example.org/x");
   assert.equal(redactUrl("not a url"), "not a url");
@@ -283,8 +286,8 @@ test("the engine rejects a base URL with a query or fragment (library users)", (
     assert.throws(
       () => new RequestEngine({ baseUrl }),
       (err) =>
-        err instanceof MudabNetworkError &&
-        err.message.startsWith("Base URL must not contain a query or fragment: http://") &&
+        err instanceof MudabValidationError &&
+        err.message === "Invalid baseUrl: A base URL cannot have a query (?) or fragment (#)." &&
         !err.message.includes("secret"),
     );
   }
