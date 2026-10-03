@@ -18,6 +18,7 @@
 import { RequestEngine, cleanDetail, type EngineOptions } from "./engine.js";
 import { MudabParseError, MudabValidationError } from "./errors.js";
 import type {
+  Compartment,
   FilterRequest,
   ListRequest,
   HelcomPLCStation,
@@ -44,6 +45,28 @@ const COMPARTMENT_ENDPOINT: Record<ParameterCompartment, string> = {
 
 /** The compartments `parameters()` accepts, in the order the CLI lists them. */
 export const PARAMETER_COMPARTMENTS: readonly ParameterCompartment[] = ["biologie", "biota", "wasser", "sediment"];
+
+/** One row of the compartment code table: a `COMPT_DS` code, its label and its `parameters()` endpoint. */
+export interface CompartmentCode {
+  /** The `COMPT_DS` code as it appears in the rows. */
+  readonly code: Compartment;
+  /** Human-readable label (German, with the English in brackets where it differs). */
+  readonly label: string;
+  /** The compartment to pass to `parameters(req, compartment)` for this code's parameters. */
+  readonly parameterCompartment: ParameterCompartment;
+}
+
+/**
+ * The compartment (`COMPT_DS`) code table, verified live. NOTE: this is NOT
+ * exhaustive — the API also returns codes outside the documented set (e.g. `MM`).
+ * The CLI's `compartments` command prints it as is.
+ */
+export const COMPARTMENT_CODES: readonly CompartmentCode[] = Object.freeze([
+  Object.freeze({ code: "CW", label: "Wasser (water)", parameterCompartment: "wasser" }),
+  Object.freeze({ code: "CS", label: "Sediment", parameterCompartment: "sediment" }),
+  Object.freeze({ code: "CF", label: "Biota", parameterCompartment: "biota" }),
+  Object.freeze({ code: "BL", label: "Biologie (biology)", parameterCompartment: "biologie" }),
+] as const);
 
 /**
  * The endpoint of a compartment. The lookup checks own keys only, so an unknown

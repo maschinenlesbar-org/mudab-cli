@@ -5,7 +5,7 @@
 
 import { Option, type Command } from "commander";
 import type { CliDeps } from "../io.js";
-import { PARAMETER_COMPARTMENTS } from "../../client/client.js";
+import { COMPARTMENT_CODES, PARAMETER_COMPARTMENTS } from "../../client/client.js";
 import type { MudabClient, ParameterCompartment } from "../../client/client.js";
 import type { ListRequest } from "../../client/types.js";
 import { action, addListOptions, buildFilterRequest, renderJson } from "../shared.js";
@@ -42,17 +42,6 @@ const LIST_COMMANDS: { name: string; desc: string; run: ListFn }[] = [
   },
 ];
 
-/**
- * The compartment (COMPT_DS) code table, verified live. NOTE: this is NOT
- * exhaustive — the API also returns codes outside the documented set (e.g. `MM`).
- */
-const COMPARTMENTS = [
-  { code: "CW", label: "Wasser (water)", parameterCompartment: "wasser" },
-  { code: "CS", label: "Sediment", parameterCompartment: "sediment" },
-  { code: "CF", label: "Biota", parameterCompartment: "biota" },
-  { code: "BL", label: "Biologie (biology)", parameterCompartment: "biologie" },
-];
-
 export function registerCommands(program: Command, deps: CliDeps): void {
   for (const sub of LIST_COMMANDS) {
     const cmd = program.command(sub.name).description(sub.desc);
@@ -85,7 +74,7 @@ export function registerCommands(program: Command, deps: CliDeps): void {
     .description("Print the compartment (COMPT_DS) code table — works offline, no request")
     .action(
       action(deps, async ({ global }) => {
-        renderJson(deps, global, COMPARTMENTS);
+        renderJson(deps, global, COMPARTMENT_CODES);
       }),
     );
 }

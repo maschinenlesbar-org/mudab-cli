@@ -7,8 +7,9 @@ export {
   DEFAULT_PAGE_SIZE,
   MAX_RANGE_END,
   PARAMETER_COMPARTMENTS,
+  COMPARTMENT_CODES,
 } from "./client.js";
-export type { MudabClientOptions, ParameterCompartment } from "./client.js";
+export type { CompartmentCode, MudabClientOptions, ParameterCompartment } from "./client.js";
 export {
   RequestEngine,
   DEFAULT_BASE_URL,

@@ -166,3 +166,20 @@ test("parity: a malformed base URL is a MudabValidationError in the library and 
     assert.ok(cli.err.includes(`is invalid. ${reason}`), `${JSON.stringify(baseUrl)}: ${cli.err}`);
   }
 });
+
+// ---- #6 (PAT-24): the compartment code table is the library's ----
+
+test("parity: `compartments` prints the library's COMPARTMENT_CODES, with no request", async () => {
+  const lib = await import("../src/index.js");
+  const { cli } = await parity(["--compact", "compartments"], () => undefined);
+  assert.equal(cli.code, 0);
+  assert.equal(cli.requests.length, 0);
+  assert.equal(cli.out, JSON.stringify(lib.COMPARTMENT_CODES));
+  assert.deepEqual(
+    lib.COMPARTMENT_CODES.map((c) => c.code),
+    ["CW", "CS", "CF", "BL"],
+  );
+  for (const row of lib.COMPARTMENT_CODES) {
+    assert.ok(lib.PARAMETER_COMPARTMENTS.includes(row.parameterCompartment), row.code);
+  }
+});
