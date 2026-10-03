@@ -76,3 +76,31 @@ test("the library rejects { all: true } together with a range, and a non-boolean
     assert.equal(lib.requests.length, 0, JSON.stringify(req));
   }
 });
+
+// ---- #3 (PAT-5): the User-Agent rule is the library's ----
+
+test("parity: a bad userAgent is rejected by the CLI and the library alike, with no request", async () => {
+  for (const ua of ["", "  ", "bad\r\nX-Injected: 1", "a\u0000b", "a\u007fb", "mādab", "€"]) {
+    const { cli, lib } = await parity(["--compact", "--user-agent", ua, "stations"], (transport) =>
+      new MudabClient({ transport, userAgent: ua }).stations(),
+    );
+    assert.equal(cli.code, 2, JSON.stringify(ua));
+    assert.equal(cli.requests.length, 0, JSON.stringify(ua));
+    assert.equal(lib.ok, false, JSON.stringify(ua));
+    assert.equal(lib.error?.name, "MudabValidationError", JSON.stringify(ua));
+    assert.equal(lib.requests.length, 0, JSON.stringify(ua));
+    // Same reason on both sides: the CLI's usage error ends with the library's reason.
+    const reason = lib.error!.message.replace(/^Invalid userAgent: /, "");
+    assert.match(cli.err, new RegExp(`is invalid\\. ${reason.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`), JSON.stringify(ua));
+  }
+});
+
+test("parity: tab and Latin-1 in userAgent pass on both sides", async () => {
+  const ua = "müdab\t1";
+  const { cli, lib } = await parity(["--compact", "--user-agent", ua, "stations"], (transport) =>
+    new MudabClient({ transport, userAgent: ua }).stations(),
+    () => jsonResponse(fx.stations),
+  );
+  assertSameRequests(["--user-agent", ua], cli, lib);
+  assert.equal(lib.requests[0]!.headers?.["User-Agent"], ua);
+});

@@ -107,3 +107,10 @@ test("enforces maxResponseBytes", async () => {
     },
   );
 });
+
+test("a header Node refuses rejects with MudabNetworkError, not a raw TypeError", async () => {
+  await assert.rejects(
+    nodeHttpTransport({ method: "GET", url: "http://127.0.0.1:9/x", headers: { "User-Agent": "a\nb" } }),
+    (err) => err instanceof MudabNetworkError && /^Invalid request: /.test(err.message),
+  );
+});

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { RequestEngine, parseRetryAfter } from "../src/client/engine.js";
+import { RequestEngine, assertHeaderValue, parseRetryAfter } from "../src/client/engine.js";
+import { headerNameProblem, headerValueProblem } from "../src/client/validate.js";
 import { MudabApiError, MudabNetworkError, MudabParseError, MudabValidationError, redactUrl } from "../src/client/errors.js";
 import { makeMockTransport, jsonResponse, rawResponse, jsonBodyOf } from "./helpers.js";
 import * as fx from "./fixtures.js";
@@ -287,4 +288,26 @@ test("the engine rejects a base URL with a query or fragment (library users)", (
         !err.message.includes("secret"),
     );
   }
+});
+
+test("the engine checks userAgent and defaultHeaders before any request", () => {
+  const mt = makeMockTransport(() => jsonResponse({}));
+  for (const [options, message] of [
+    [{ userAgent: "" }, "Invalid userAgent: Expected a non-empty value."],
+    [{ userAgent: "a\nb" }, "Invalid userAgent: Value contains control characters."],
+    [{ userAgent: "€" }, "Invalid userAgent: Value contains characters outside Latin-1 (above U+00FF)."],
+    [{ defaultHeaders: { "X-Trace": "a\r\nb" } }, 'Invalid defaultHeaders["X-Trace"]: Value contains control characters.'],
+    [{ defaultHeaders: { "Bad Name": "x" } }, 'Invalid defaultHeaders name: Expected an HTTP header name (a token), got "Bad Name".'],
+  ] as const) {
+    assert.throws(
+      () => new RequestEngine({ transport: mt.transport, ...options }),
+      (err) => err instanceof MudabValidationError && err.message === message,
+      JSON.stringify(options),
+    );
+  }
+  assert.equal(mt.calls.length, 0);
+  assert.equal(assertHeaderValue("User-Agent", "ok\t1"), "ok\t1");
+  assert.equal(headerValueProblem("x"), undefined);
+  assert.equal(headerValueProblem(" "), "Expected a non-empty value.");
+  assert.equal(headerNameProblem("X-Trace-Id"), undefined);
 });

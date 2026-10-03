@@ -13,6 +13,7 @@ import {
   MudabValidationError,
   redactUrl,
 } from "./errors.js";
+import { assertValid, headerNameProblem, headerValueProblem } from "./validate.js";
 
 export const DEFAULT_BASE_URL = "https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements";
 const DEFAULT_USER_AGENT = "mudab-cli";
@@ -33,9 +34,12 @@ export interface EngineOptions {
   baseUrl?: string;
   /** Swappable transport. Defaults to the built-in node http/https transport. */
   transport?: Transport;
-  /** Value of the User-Agent header. */
+  /**
+   * Value of the User-Agent header: not blank, Latin-1 without control characters
+   * (tab is fine), else a MudabValidationError.
+   */
   userAgent?: string;
-  /** Extra headers sent on every request. */
+  /** Extra headers sent on every request; names must be tokens, values follow the `userAgent` rule. */
   defaultHeaders?: Record<string, string>;
   /**
    * Time limit per request in milliseconds, covering the whole response body, not
@@ -177,6 +181,25 @@ function intOption(name: string, value: number | undefined, fallback: number, ma
   return value;
 }
 
+/**
+ * Check a value bound for an HTTP header (`headerValueProblem`) and return it, or
+ * throw a MudabValidationError (`Invalid <name>: <reason>`). The engine runs it on
+ * `userAgent` and every `defaultHeaders` value before any request.
+ */
+export function assertHeaderValue(name: string, value: string): string {
+  return assertValid(name, value, headerValueProblem);
+}
+
+/** Check every `defaultHeaders` name (a token) and value; returns a copy. */
+function checkedHeaders(headers: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(headers)) {
+    assertValid("defaultHeaders name", name, headerNameProblem);
+    out[name] = assertHeaderValue(`defaultHeaders["${name}"]`, value);
+  }
+  return out;
+}
+
 const realSleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -198,8 +221,12 @@ export class RequestEngine {
     // gating at all, and could be steered to a non-http(s) scheme.
     assertHttpScheme(this.baseUrl);
     this.transport = options.transport ?? nodeHttpTransport;
-    this.userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
-    this.defaultHeaders = options.defaultHeaders ?? {};
+    // Header values are checked up front: a blank one would be sent as is, a CR/LF
+    // would reach a custom transport, and the default transport would fail late with
+    // a raw TypeError outside the MudabError hierarchy.
+    this.userAgent =
+      options.userAgent === undefined ? DEFAULT_USER_AGENT : assertHeaderValue("userAgent", options.userAgent);
+    this.defaultHeaders = checkedHeaders(options.defaultHeaders ?? {});
     this.timeoutMs = intOption("timeoutMs", options.timeoutMs, 30_000, MAX_TIMEOUT_MS);
     this.maxRetries = intOption("maxRetries", options.maxRetries, 2, MAX_RETRIES);
     this.retryDelayMs = intOption("retryDelayMs", options.retryDelayMs, 200, MAX_RETRY_AFTER_MS);

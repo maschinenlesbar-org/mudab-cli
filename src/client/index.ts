@@ -14,6 +14,7 @@ export {
   DEFAULT_BASE_URL,
   MAX_RETRIES,
   MAX_RETRY_AFTER_MS,
+  assertHeaderValue,
   parseRetryAfter,
 } from "./engine.js";
 export type { EngineOptions, RawResponse } from "./engine.js";
@@ -27,7 +28,7 @@ export {
   MudabParseError,
   redactUrl,
 } from "./errors.js";
-export { assertValid } from "./validate.js";
+export { assertValid, headerNameProblem, headerValueProblem } from "./validate.js";
 export type { Problem } from "./validate.js";
 
 export * from "./types.js";

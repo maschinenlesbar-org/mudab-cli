@@ -104,7 +104,12 @@ the CLI adds a hint pointing at the canonical base URL.
   engine options (`timeoutMs` 0..2³¹−1, `maxRetries` 0..`MAX_RETRIES` = 10 — shared with
   `--max-retries` —, `retryDelayMs` 0..30 000, `maxResponseBytes` 0..2⁵³−1), the
   request's `range` and `all` (see the quirks table; `normalizeRange`, exported, shows
-  what a list method sends) and `parameters()`'s compartment.
+  what a list method sends), `parameters()`'s compartment, and the header options:
+  `userAgent` and every `defaultHeaders` value must be non-blank Latin-1 without
+  control characters (tab is fine), and header names must be tokens
+  (`headerValueProblem`/`headerNameProblem`, exported, which `--user-agent` uses too).
+  The default transport also turns a header Node refuses into a `MudabNetworkError`,
+  never a raw `TypeError`.
 - **Input validation** ([`validate.ts`](src/client/validate.ts)): a rule is a pure
   `<thing>Problem(value)` function that returns why a value is invalid, or `undefined`.
   The library enforces it with `assertValid(name, value, problem)` before any request,

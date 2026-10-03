@@ -20,3 +20,34 @@ export function assertValid<T>(name: string, value: T, problem: Problem<T>): T {
   if (reason !== undefined) throw new MudabValidationError(`Invalid ${name}: ${reason}`);
   return value;
 }
+
+/** A value as it appears in a validation message: strings quoted, the rest as is. */
+function show(value: unknown): string {
+  return typeof value === "string" ? JSON.stringify(value) : String(value);
+}
+
+/**
+ * Why `value` cannot be sent as an HTTP header value (`userAgent`, a `defaultHeaders`
+ * value), or undefined when it can: it must be a non-blank string with no control
+ * character other than tab (a CR/LF would inject a header into a custom transport)
+ * and no DEL, and nothing above U+00FF. Node's HTTP layer refuses those at request
+ * time with a raw `TypeError` ("Invalid character in header content"). The engine
+ * enforces it, and the CLI's `--user-agent` parser calls it. Checked by char code so
+ * the source stays free of control bytes.
+ */
+export const headerValueProblem: Problem<string> = (value) => {
+  if (typeof value !== "string") return `Expected a string, got ${show(value)}.`;
+  if (value.trim() === "") return "Expected a non-empty value.";
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if ((c < 0x20 && c !== 0x09) || c === 0x7f) return "Value contains control characters.";
+    if (c > 0xff) return "Value contains characters outside Latin-1 (above U+00FF).";
+  }
+  return undefined;
+};
+
+/** Why `name` cannot be an HTTP header name (an RFC 9110 token, e.g. `X-Trace-Id`), or undefined. */
+export const headerNameProblem: Problem<string> = (name) =>
+  typeof name === "string" && /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name)
+    ? undefined
+    : `Expected an HTTP header name (a token), got ${show(name)}.`;
