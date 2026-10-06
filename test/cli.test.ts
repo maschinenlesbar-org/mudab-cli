@@ -186,7 +186,7 @@ test("--from/--count are bounded to 2^31 - 1, and so is their sum", async () => 
     assert.equal(cli.mt.calls.length, 0, args.join(" "));
     assert.match(cli.err.join("\n"), message, args.join(" "));
   }
-  const ok = makeCli(() => jsonResponse(fx.stations));
+  const ok = makeCli(() => jsonResponse({ V_STATION_SMALL: [] }));
   assert.equal(await run(["stations", "--from", "2147483646", "--count", "1"], ok.deps), 0);
   assert.deepEqual(jsonBodyOf(ok.mt.last()), { range: { from: 2147483646, count: 1 } });
 });

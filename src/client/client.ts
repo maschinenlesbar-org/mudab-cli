@@ -341,7 +341,20 @@ export class MudabClient {
         detail: `the server answered with an error instead of rows: ${errors}`,
       });
     }
-    return extractRows<T>(res, resource);
+    const rows = extractRows<T>(res, resource);
+    // The range is the only selection the server makes. A reply with more rows than were
+    // asked for means it ignored the range, so the rows are not the page asked for (for
+    // `from` > 0 they start at row 0): an error, never a silently larger page.
+    const count = body.range?.count;
+    if (count !== undefined && rows.length > count) {
+      throw new MudabParseError(
+        `Unexpected response from ${resource}: asked for at most ${count} rows ` +
+          `(from ${body.range?.from ?? 0}), got ${rows.length}. The server did not honour the range, ` +
+          `so these are not the rows asked for; fetch the whole table ({ all: true }; --all on the ` +
+          `CLI) and select rows yourself.`,
+      );
+    }
+    return rows;
   }
 
   /** Measurement stations (`STATION_SMALL`). */

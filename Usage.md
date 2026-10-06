@@ -77,7 +77,7 @@ mudab plc-measurements --all --compact \
 | Code | Meaning |
 |---|---|
 | `0` | success (help/version included); an empty result also exits 0, and so does a run whose output reader stops early (`\| head`) |
-| `1` | API/logical error (a redirect included — it is not followed, the message names its target; an error list sent with status 200, `{"errors":[…]}`, included — the message carries its text), a reply that is not the resource's row wrapper (an error object, another table's rows, a row that is not an object, or an empty body sent with status 200), or a catch-all |
+| `1` | API/logical error (a redirect included — it is not followed, the message names its target; an error list sent with status 200, `{"errors":[…]}`, included — the message carries its text), a reply that is not the resource's row wrapper (an error object, another table's rows, a row that is not an object, or an empty body sent with status 200), more rows than `--count` asked for (the server ignored the range), or a catch-all |
 | `2` | usage error (bad flags, unknown command, `--all` with `--from/--count`, `--from` + `--count` above 2147483647) |
 | `4` | HTTP 404 |
 | `6` | network / transport failure (DNS, connection, timeout, response size-cap) |

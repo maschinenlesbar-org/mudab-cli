@@ -180,7 +180,7 @@ test("the client checks the range before sending it", async () => {
     assert.equal(mt.calls.length, 0, JSON.stringify(range));
   }
   // The largest accepted end goes out as given; a from-only range gets the default count.
-  const { client, mt } = clientFor(fx.stations);
+  const { client, mt } = clientFor({ V_STATION_SMALL: [] });
   await client.stations({ range: { from: 2147483646, count: 1 } });
   await client.stations({ range: { from: 5 } });
   assert.deepEqual(jsonBodyOf(mt.calls[0]!), { range: { from: 2147483646, count: 1 } });
@@ -252,4 +252,20 @@ test("a request that is not an object, or has an unknown key, is rejected before
     );
     assert.equal(mt.calls.length, 0);
   }
+});
+
+test("a reply with more rows than the range asked for is a MudabParseError, not a larger page", async () => {
+  const many = { V_STATION_SMALL: Array.from({ length: 7 }, (_, i) => ({ STATNAME_ST: `S${i}` })) };
+  const { client } = clientFor(many);
+  await assert.rejects(
+    () => client.stations({ range: { from: 100, count: 2 } }),
+    (err) =>
+      err instanceof MudabParseError &&
+      err.message.startsWith("Unexpected response from /STATION_SMALL: asked for at most 2 rows (from 100), got 7."),
+  );
+  // As many rows as asked for, or fewer (the end of the table), are the page.
+  assert.equal((await clientFor(many).client.stations({ range: { count: 7 } })).length, 7);
+  assert.equal((await clientFor(many).client.stations({ range: { from: 5, count: 50 } })).length, 7);
+  // With { all: true } there is no range to check.
+  assert.equal((await clientFor(many).client.stations({ all: true })).length, 7);
 });
