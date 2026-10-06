@@ -103,7 +103,18 @@ the CLI adds a hint pointing at the canonical base URL.
 - **Retry/backoff:** transient `429`/`503` retried up to `maxRetries`, honouring
   `Retry-After` (delay-seconds or an IMF-fixdate, parsed strictly by `parseRetryAfter`)
   up to `MAX_RETRY_AFTER_MS` (30 s; a longer one is not retried, the error surfaces at
-  once), else linear backoff (`retryDelayMs * attempt`).
+  once), else linear backoff (`retryDelayMs * attempt`). Network failures, resets
+  included, are **not** retried: every call is a POST that may fetch a whole table, and
+  the host has blocked clients before.
+- **The engine enforces the transport contract** for any transport, not only the
+  built-in one: it runs each call under the `timeoutMs` deadline (passing an
+  `AbortSignal` as `HttpRequest.signal`, which the built-in transport honours), checks
+  the body size against `maxResponseBytes` after the call, reads headers from a
+  `Headers` object, a `Map` or any key case (`plainHeaders`), takes any ArrayBuffer view
+  or ArrayBuffer as the body (`bodyBytes`), and turns a malformed response (no or a
+  non-HTTP status, no headers, another body type) or anything thrown into a
+  `MudabNetworkError`. The size-limit message names `maxResponseBytes` and
+  `--max-response-bytes`.
 - **Library input is checked before any request** (`MudabValidationError`): the numeric
   engine options (`timeoutMs` 0..2³¹−1, `maxRetries` 0..`MAX_RETRIES` = 10 — shared with
   `--max-retries` —, `retryDelayMs` 0..30 000, `maxResponseBytes` 0..2⁵³−1), the

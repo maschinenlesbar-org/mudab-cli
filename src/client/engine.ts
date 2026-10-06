@@ -5,7 +5,14 @@
 // MUDAB is POST-only with a JSON body (the FilterRequest); every parameter travels
 // in the body, so there is no query-string builder. There is no authentication.
 
-import { MAX_TIMEOUT_MS, nodeHttpTransport, type HttpResponse, type Transport } from "./http.js";
+import {
+  MAX_TIMEOUT_MS,
+  nodeHttpTransport,
+  sizeLimitMessage,
+  type HttpRequest,
+  type HttpResponse,
+  type Transport,
+} from "./http.js";
 import {
   MudabApiError,
   MudabError,
@@ -39,7 +46,12 @@ export interface EngineOptions {
    * characters (`baseUrlProblem`), else a MudabValidationError.
    */
   baseUrl?: string;
-  /** Swappable transport. Defaults to the built-in node http/https transport. */
+  /**
+   * Swappable transport. Defaults to the built-in node http/https transport. The engine
+   * enforces `timeoutMs` and `maxResponseBytes` for any transport, reads its headers in
+   * any case (a fetch `Headers` or a `Map` too) and its body as any ArrayBuffer view, and
+   * turns whatever it throws, or a malformed response, into a `MudabNetworkError`.
+   */
   transport?: Transport;
   /**
    * Value of the User-Agent header: not blank, Latin-1 without control characters
@@ -50,12 +62,15 @@ export interface EngineOptions {
   defaultHeaders?: Record<string, string>;
   /**
    * Time limit per request in milliseconds, covering the whole response body, not
-   * only idle gaps (0 disables; at most MAX_TIMEOUT_MS, 2^31 - 1 ms).
+   * only idle gaps (0 disables; at most MAX_TIMEOUT_MS, 2^31 - 1 ms). Enforced by the
+   * engine for every transport: the request's `signal` aborts then.
    */
   timeoutMs?: number;
   /**
    * Number of automatic retries for transient (429/503) responses, 0..`MAX_RETRIES`
-   * (10; default 2). Each waits the
+   * (10; default 2). A reset connection, a refused one, a DNS failure and a timeout are
+   * not retried: every MUDAB call is a POST that may fetch a whole table, and the host
+   * has blocked clients before. Each waits the
    * response's `Retry-After` (up to `MAX_RETRY_AFTER_MS`; a longer one is not
    * retried), or else `retryDelayMs * attempt`.
    */
@@ -68,7 +83,8 @@ export interface EngineOptions {
   /**
    * Hard cap on response body size in bytes (defends against memory exhaustion
    * from a hostile/buggy endpoint). Defaults to 100 MiB; set to 0 for no limit.
-   * At most Number.MAX_SAFE_INTEGER.
+   * At most Number.MAX_SAFE_INTEGER. Enforced by the engine on the body any transport
+   * returns (the default transport also stops reading early).
    */
   maxResponseBytes?: number;
   /** Injectable sleep, primarily for deterministic tests. */
@@ -142,6 +158,61 @@ export function sanitizeServerText(text: string): string {
 export function cleanDetail(raw: string): string {
   const clean = sanitizeServerText(raw);
   return clean.length > MAX_DETAIL_LENGTH ? `${clean.slice(0, MAX_DETAIL_LENGTH)}…` : clean;
+}
+
+/** Why `value` is not a usable HttpResponse, or undefined when it is. */
+function responseProblem(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null) return "not an object";
+  const r = value as Partial<Record<"status" | "headers" | "body", unknown>>;
+  if (typeof r.status !== "number" || !Number.isInteger(r.status) || r.status < 100 || r.status > 599) {
+    return "status is not an HTTP status code";
+  }
+  if (typeof r.headers !== "object" || r.headers === null || Array.isArray(r.headers)) return "headers is not an object";
+  if (bodyBytes(r.body) === undefined) return "body is not a Buffer, Uint8Array, other ArrayBuffer view or ArrayBuffer";
+  return undefined;
+}
+
+/**
+ * The response body as a Buffer (a view, no copy): a Buffer, any ArrayBuffer view (a
+ * Uint8Array from fetch, a DataView) or an ArrayBuffer/SharedArrayBuffer — checked by internal
+ * slot, not `instanceof`, so a value from another realm (a vm context, a Jest test) counts.
+ * Undefined for anything else.
+ */
+function bodyBytes(value: unknown): Buffer | undefined {
+  if (Buffer.isBuffer(value)) return value;
+  if (ArrayBuffer.isView(value)) return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+  const tag = Object.prototype.toString.call(value);
+  if (tag === "[object ArrayBuffer]" || tag === "[object SharedArrayBuffer]") return Buffer.from(value as ArrayBuffer);
+  return undefined;
+}
+
+/**
+ * The response headers as a plain record with lower-case names. A transport built on
+ * `fetch` naturally returns its `Headers` object, which has no plain properties, and a
+ * custom one may write `Retry-After` or `Location` in any case: the engine then saw no
+ * Retry-After (falling back to its 200 ms backoff) and no Location. Such an object
+ * (anything with `get` and `forEach`, a `Headers` or a `Map`) is copied into a record; a
+ * plain record gets its names lower-cased.
+ */
+function plainHeaders(headers: object): Record<string, string | string[] | undefined> {
+  const h = headers as { get?: unknown; forEach?: unknown };
+  if (typeof h.get === "function" && typeof h.forEach === "function") {
+    const record: Record<string, string> = {};
+    (h.forEach as (cb: (value: unknown, name: unknown) => void) => void).call(headers, (value, name) => {
+      record[String(name).toLowerCase()] = String(value);
+    });
+    return record;
+  }
+  const record: Record<string, string | string[] | undefined> = {};
+  for (const [name, value] of Object.entries(headers as Record<string, string | string[] | undefined>)) {
+    record[name.toLowerCase()] = value;
+  }
+  return record;
+}
+
+/** The first value of a header that may have been given as a list. */
+function firstValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }
 
 /** Most automatic retries a caller may ask for (the CLI's --max-retries shares it). */
@@ -284,6 +355,32 @@ export class RequestEngine {
     return new MudabNetworkError(message, { cause: scrubbed });
   }
 
+  /**
+   * Call the transport under the overall deadline (`timeoutMs`): the request gets an
+   * AbortSignal that fires at the deadline, and the call rejects then whether the transport
+   * stops or not — a custom transport (fetch, a node:http wrapper) that ignores `timeoutMs`
+   * can't hang the caller. A synchronous throw becomes a rejection.
+   */
+  private async callTransport(request: HttpRequest): Promise<HttpResponse> {
+    const call = (signal?: AbortSignal): Promise<HttpResponse> =>
+      Promise.resolve().then(() => this.transport(signal === undefined ? request : { ...request, signal }));
+    if (this.timeoutMs === 0) return call();
+    const controller = new AbortController();
+    let timer: NodeJS.Timeout | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        const err = new MudabNetworkError(`Request timed out after ${this.timeoutMs}ms`);
+        controller.abort(err);
+        reject(err);
+      }, this.timeoutMs);
+    });
+    try {
+      return await Promise.race([call(controller.signal), deadline]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   /** Build a fully-qualified URL from a path (all parameters travel in the body). */
   buildUrl(path: string): string {
     const normalizedPath = path.startsWith("/") ? path : `/${path}`;
@@ -317,7 +414,7 @@ export class RequestEngine {
     for (;;) {
       let response: HttpResponse;
       try {
-        response = await this.transport({
+        response = await this.callTransport({
           method,
           url,
           headers,
@@ -326,15 +423,30 @@ export class RequestEngine {
           ...(this.maxResponseBytes > 0 ? { maxResponseBytes: this.maxResponseBytes } : {}),
         });
       } catch (cause) {
+        // Not retried, whatever the failure (a reset included): see `maxRetries`.
         throw this.transportError(cause);
       }
 
+      // An injected transport may resolve with anything; a malformed HttpResponse would
+      // otherwise surface below as a raw TypeError (or, without a status, as success).
+      const invalid = responseProblem(response);
+      if (invalid !== undefined) {
+        throw new MudabNetworkError(`The transport returned an invalid response (${invalid}).`);
+      }
       const status = response.status;
+      const responseHeaders = plainHeaders(response.headers);
+      // fetch gives a Uint8Array; view it as a Buffer (no copy), which the decoders expect.
+      const body = bodyBytes(response.body) as Buffer;
+      // The size cap holds whatever the transport did: the default one aborts early, a custom
+      // one may have read everything.
+      if (this.maxResponseBytes > 0 && body.byteLength > this.maxResponseBytes) {
+        throw new MudabNetworkError(sizeLimitMessage(this.maxResponseBytes));
+      }
       const retryable = status === 429 || status === 503;
       if (retryable && attempt < this.maxRetries) {
         // Honour Retry-After; without a usable one, back off linearly. A Retry-After
         // beyond MAX_RETRY_AFTER_MS is not retried: the error below surfaces at once.
-        const retryAfter = parseRetryAfter(response.headers["retry-after"]);
+        const retryAfter = parseRetryAfter(responseHeaders["retry-after"]);
         if (retryAfter === undefined || retryAfter <= MAX_RETRY_AFTER_MS) {
           attempt += 1;
           await this.sleep(retryAfter ?? this.retryDelayMs * attempt);
@@ -342,12 +454,12 @@ export class RequestEngine {
         }
       }
 
-      const contentType = String(response.headers["content-type"] ?? "");
+      const contentType = String(firstValue(responseHeaders["content-type"]) ?? "");
       if (status < 200 || status >= 300) {
-        throw this.toApiError(method, url, status, response.body, response.headers["location"]);
+        throw this.toApiError(method, url, status, body, firstValue(responseHeaders["location"]));
       }
 
-      return { data: response.body, contentType, status };
+      return { data: body, contentType, status };
     }
   }
 

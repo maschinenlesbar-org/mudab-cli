@@ -5,6 +5,7 @@ import { headerNameProblem, headerValueProblem } from "../src/client/validate.js
 import { MudabApiError, MudabNetworkError, MudabParseError, MudabValidationError, redactUrl } from "../src/client/errors.js";
 import { makeMockTransport, jsonResponse, rawResponse, jsonBodyOf } from "./helpers.js";
 import * as fx from "./fixtures.js";
+import type { HttpResponse } from "../src/client/http.js";
 
 test("buildUrl normalises the path (parameters travel in the body)", () => {
   const e = new RequestEngine({ baseUrl: "https://example.test/base/" });
@@ -322,4 +323,33 @@ test("the engine checks the raw base URL, before stripping trailing slashes", ()
     (err) => err instanceof MudabValidationError && err.message === "Invalid baseUrl: A base URL cannot have surrounding whitespace.",
   );
   assert.equal(mt.calls.length, 0);
+});
+
+test("a redirect's Location is read from a Headers object, a Map and any header case", async () => {
+  const shapes: unknown[] = [
+    new Headers({ Location: "https://elsewhere.test/x" }),
+    new Map([["Location", "https://elsewhere.test/x"]]),
+    { Location: "https://elsewhere.test/x" },
+    { LOCATION: "https://elsewhere.test/x" },
+  ];
+  for (const headers of shapes) {
+    const e = new RequestEngine({
+      baseUrl: "https://h.test/b",
+      transport: async () => ({ status: 302, headers: headers as Record<string, string>, body: Buffer.alloc(0) }),
+    });
+    await assert.rejects(
+      e.postJson("/x", {}),
+      (err) =>
+        err instanceof MudabApiError &&
+        err.message === "HTTP 302 for POST https://h.test/b/x: redirect to https://elsewhere.test/x not followed",
+    );
+  }
+});
+
+test("a transport response without a status is a MudabNetworkError, never success", async () => {
+  const e = new RequestEngine({
+    transport: async () =>
+      ({ headers: {}, body: Buffer.from(JSON.stringify({ V_STATION_SMALL: [] })) }) as unknown as HttpResponse,
+  });
+  await assert.rejects(e.postJson("/STATION_SMALL", {}), MudabNetworkError);
 });
