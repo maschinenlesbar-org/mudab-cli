@@ -97,7 +97,9 @@ the CLI adds a hint pointing at the canonical base URL.
   the top differs. The follow-up round of 2026-10-06 added P20 (a remote plain `http:` base
   URL gets one `warning:` line on stderr from the library's `cleartextProblem`, printed by
   `action()` in `shared.ts` before the client is built; no base-URL variable and no secret
-  but the URL's own credentials here, so those two cases are skipped).
+  but the URL's own credentials here, so those two cases are skipped) and P21 (every
+  relative link in `README.md` points to a file `package.json` `files` ships, since npmjs.com
+  shows the README; other documents are linked by their GitHub URL).
 
 ## Conventions to keep
 

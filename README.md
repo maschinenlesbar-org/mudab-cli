@@ -59,7 +59,7 @@ Global flags: `--base-url`, `--timeout`, `--user-agent`, `--max-retries`,
 loopback (`localhost`, `127.0.0.0/8`, `::1`) prints one
 `warning: requests to <host> are sent unencrypted (http:, not https:)` line on stderr
 before the first request (naming the URL's credentials instead when it carries any,
-never printing them); stdout and the exit code are unchanged. See [Usage.md](Usage.md)
+never printing them); stdout and the exit code are unchanged. See [Usage.md](https://github.com/maschinenlesbar-org/mudab-cli/blob/main/Usage.md)
 for the full reference.
 
 ## Library
@@ -83,11 +83,11 @@ single-key wrapper object). Only `range` is honoured by the server — see the n
 
 ## Documentation
 
-- [Usage.md](Usage.md) — full command reference and exit codes
-- [DEVELOPING.md](DEVELOPING.md) — architecture, testing, the live-API quirks
-- [GLOSSARY.md](GLOSSARY.md) — MUDAB domain terms (stations, compartments, PLC)
+- [Usage.md](https://github.com/maschinenlesbar-org/mudab-cli/blob/main/Usage.md) — full command reference and exit codes
+- [DEVELOPING.md](https://github.com/maschinenlesbar-org/mudab-cli/blob/main/DEVELOPING.md) — architecture, testing, the live-API quirks
+- [GLOSSARY.md](https://github.com/maschinenlesbar-org/mudab-cli/blob/main/GLOSSARY.md) — MUDAB domain terms (stations, compartments, PLC)
 - [DATA_LICENSE.md](DATA_LICENSE.md) — upstream data terms (distinct from the code license)
-- [SKILLS.md](SKILLS.md) — the Claude Code skills this repo ships
+- [SKILLS.md](https://github.com/maschinenlesbar-org/mudab-cli/blob/main/SKILLS.md) — the Claude Code skills this repo ships
 
 ## Licence
 
