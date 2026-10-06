@@ -251,6 +251,36 @@ function functionOption<F extends (...args: never[]) => unknown>(name: string, v
   return value;
 }
 
+/** True for a loopback host name: `localhost`, `127.0.0.0/8`, `::1` (as `URL.hostname` gives them). */
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "[::1]" || /^127(\.\d{1,3}){3}$/.test(hostname);
+}
+
+/**
+ * What travels unencrypted when requests go to `baseUrl`, as one sentence for a
+ * `warning: ` line — or `undefined` when nothing does: an `https:` URL, a URL that does
+ * not parse (the base-URL check reports that), or a loopback host (`localhost`,
+ * `127.0.0.0/8`, `::1`). The sentence names the host (`url.host`, host and port) and what
+ * is sent with each request: the base URL's own credentials (userinfo) and any other
+ * secret passed as a noun phrase in `secrets` (e.g. `"the API key"`). It never contains
+ * a password or key. The CLI prints it once per run, before the first request.
+ */
+export function cleartextProblem(baseUrl: string, secrets: readonly string[] = []): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== "http:" || isLoopbackHost(url.hostname)) return undefined;
+  const sent = [...secrets];
+  if (url.username !== "" || url.password !== "") sent.push("the base URL's credentials");
+  if (sent.length === 0) return `requests to ${url.host} are sent unencrypted (http:, not https:)`;
+  // "the base URL's credentials" and any pair are plural; a single secret phrase is not.
+  const verb = sent.length === 1 && secrets.length === 1 ? "is" : "are";
+  return `${sent.join(" and ")} ${verb} sent unencrypted to ${url.host} (http:, not https:)`;
+}
+
 /**
  * Check a value bound for an HTTP header (`headerValueProblem`) and return it, or
  * throw a MudabValidationError (`Invalid <name>: <reason>`). The engine runs it on

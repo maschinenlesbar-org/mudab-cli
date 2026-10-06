@@ -94,7 +94,10 @@ the CLI adds a hint pointing at the canonical base URL.
   2026-10-05 review (P1 credential redaction in CLI output, P2 in library objects, P4 base-URL
   validation, P5 the transport contract, P6 retries, P7 pipes, P8/P9/P13 charset, 2xx
   bodies and error classes); copied across the `*-cli` repos, only the adapter block at
-  the top differs.
+  the top differs. The follow-up round of 2026-10-06 added P20 (a remote plain `http:` base
+  URL gets one `warning:` line on stderr from the library's `cleartextProblem`, printed by
+  `action()` in `shared.ts` before the client is built; no base-URL variable and no secret
+  but the URL's own credentials here, so those two cases are skipped).
 
 ## Conventions to keep
 

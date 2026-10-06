@@ -55,7 +55,12 @@ mudab compartments                            # compartment code table (offline)
 > ```
 
 Global flags: `--base-url`, `--timeout`, `--user-agent`, `--max-retries`,
-`--max-response-bytes`, `--compact`. See [Usage.md](Usage.md) for the full reference.
+`--max-response-bytes`, `--compact`. A `--base-url` on plain `http:` to a host other than
+loopback (`localhost`, `127.0.0.0/8`, `::1`) prints one
+`warning: requests to <host> are sent unencrypted (http:, not https:)` line on stderr
+before the first request (naming the URL's credentials instead when it carries any,
+never printing them); stdout and the exit code are unchanged. See [Usage.md](Usage.md)
+for the full reference.
 
 ## Library
 

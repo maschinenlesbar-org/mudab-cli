@@ -18,6 +18,7 @@ export {
   MAX_RETRIES,
   MAX_RETRY_AFTER_MS,
   assertHeaderValue,
+  cleartextProblem,
   parseRetryAfter,
 } from "./engine.js";
 export type { EngineOptions, RawResponse } from "./engine.js";
