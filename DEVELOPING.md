@@ -100,7 +100,8 @@ the CLI adds a hint pointing at the canonical base URL.
 - **Zero runtime HTTP deps** — `node:http`/`https` only; the CLI's only runtime dep is
   `commander`.
 - **Strict TS** (`strict`, `noUncheckedIndexedAccess`, `noUnusedLocals`) and ESM
-  (`module: NodeNext`). Keep passing on Node 20/22/24.
+  (`module: NodeNext`). Keep passing on Node 22/24 (`engines`: `>=22.12`, the floor of
+  `commander` 15).
 - **Exit codes** (`run.ts`): help/version → 0; usage → 2; 404 → 4; network → 6; other → 1.
 - **Retry/backoff:** transient `429`/`503` retried up to `maxRetries`. The linear
   backoff (`retryDelayMs * attempt`) is the floor; a `Retry-After` (delay-seconds or an

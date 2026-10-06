@@ -29,6 +29,8 @@ npm install -g @maschinenlesbar.org/mudab-cli   # the `mudab` command
 npm install @maschinenlesbar.org/mudab-cli
 ```
 
+Requires **Node.js 22.12+**.
+
 ## CLI
 
 Every command lists one dataset. Results are paged with `--from`/`--count`
