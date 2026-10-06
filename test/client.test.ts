@@ -225,3 +225,31 @@ test("parameters() rejects an unknown compartment with a MudabValidationError, n
     assert.equal(mt.calls.length, 0);
   }
 });
+
+test("null as the request means no request: the default page, like undefined", async () => {
+  const { client, mt } = clientFor(fx.stations);
+  await client.stations(null as unknown as undefined);
+  assert.deepEqual(jsonBodyOf(mt.last()), { range: { from: 0, count: DEFAULT_PAGE_SIZE } });
+  const p = clientFor(fx.parametersWasser);
+  await p.client.parameters(null as unknown as undefined, "wasser");
+  assert.deepEqual(jsonBodyOf(p.mt.last()), { range: { from: 0, count: DEFAULT_PAGE_SIZE } });
+  assert.deepEqual(normalizeRange(null as unknown as undefined), { range: { from: 0, count: DEFAULT_PAGE_SIZE } });
+});
+
+test("a request that is not an object, or has an unknown key, is rejected before any request", async () => {
+  const cases: [unknown, RegExp][] = [
+    [5, /^Invalid request: expected an object, got a number\.$/],
+    ["x", /^Invalid request: expected an object, got a string\.$/],
+    [{ count: 5 }, /^Invalid request: unknown key "count"; a request takes filter, range, orderby, all \(from and count go inside range\)\.$/],
+    [{ range: { form: 5 } }, /^Invalid range: unknown key "form"; a range takes from and count\.$/],
+  ];
+  for (const [req, message] of cases) {
+    const { client, mt } = clientFor(fx.stations);
+    await assert.rejects(
+      () => client.stations(req as never),
+      (err) => err instanceof MudabValidationError && message.test(err.message),
+      JSON.stringify(req),
+    );
+    assert.equal(mt.calls.length, 0);
+  }
+});

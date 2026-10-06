@@ -369,3 +369,22 @@ test("postJson decodes by the declared charset, drops a BOM, and rejects an unkn
   const unknown = makeMockTransport(() => rawResponse("[]", "application/json; charset=x-bogus"));
   await assert.rejects(new RequestEngine({ transport: unknown.transport }).postJson("/x", {}), MudabParseError);
 });
+
+test("a parse error says what came back: the parser's reason, content type, size and start", async () => {
+  const cases: [string, string, RegExp][] = [
+    [
+      "<html><body>Wartungsarbeiten</body></html>",
+      "text/html",
+      /^Failed to parse JSON response from \/STATION_SMALL: .+\. The reply \(content type "text\/html", 42 bytes\) starts with "<html><body>Wartungsarbeiten<\/body><\/html>"\. It looks like an HTML page/,
+    ],
+    ['{"V_STATION_SMALL":[{"a":1', "application/json", /^Failed to parse JSON response from \/STATION_SMALL: .*JSON.*\. The reply \(content type "application\/json", 26 bytes\) starts with/],
+  ];
+  for (const [body, type, message] of cases) {
+    const mt = makeMockTransport(() => rawResponse(body, type));
+    await assert.rejects(
+      new RequestEngine({ transport: mt.transport }).postJson("/STATION_SMALL", {}),
+      (err) => err instanceof MudabParseError && message.test(err.message),
+      body,
+    );
+  }
+});

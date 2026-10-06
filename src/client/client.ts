@@ -16,7 +16,7 @@
 //   const cw = (await c.parameters({ all: true })).filter((p) => p.COMPT_DS === "CW"); // whole table
 
 import { RequestEngine, cleanDetail, type EngineOptions } from "./engine.js";
-import { MudabApiError, MudabParseError, MudabValidationError } from "./errors.js";
+import { MudabApiError, MudabParseError, MudabValidationError, cutForMessage } from "./errors.js";
 import type {
   Compartment,
   FilterRequest,
@@ -79,7 +79,7 @@ function compartmentEndpoint(compartment: unknown): string {
   }
   throw new MudabValidationError(
     `Invalid compartment: expected one of ${PARAMETER_COMPARTMENTS.join(", ")}, got ` +
-      `${typeof compartment === "string" ? JSON.stringify(compartment) : String(compartment)}.`,
+      `${cutForMessage(typeof compartment === "string" ? JSON.stringify(compartment) : String(compartment))}.`,
   );
 }
 
@@ -207,7 +207,8 @@ function rangeInt(name: string, value: unknown): number | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0 || value > MAX_RANGE_END) {
     throw new MudabValidationError(
-      `Invalid ${name}: expected an integer from 0 to ${MAX_RANGE_END}, got ${typeof value === "string" ? JSON.stringify(value) : String(value)}.`,
+      `Invalid ${name}: expected an integer from 0 to ${MAX_RANGE_END}, got ` +
+        `${cutForMessage(typeof value === "string" ? JSON.stringify(value) : String(value))}.`,
     );
   }
   return value;
@@ -221,9 +222,31 @@ function rangeInt(name: string, value: unknown): number | undefined {
  */
 export const DEFAULT_PAGE_SIZE = 100;
 
+/** The keys a {@link ListRequest} may have, and those of its `range`. */
+const LIST_REQUEST_KEYS = ["filter", "range", "orderby", "all"];
+const RANGE_KEYS = ["from", "count"];
+
+/** What `value` is, for a validation message (never the value itself). */
+function kindOf(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "an array";
+  return typeof value === "object" ? "an object" : `a ${typeof value}`;
+}
+
+/** Unknown own keys of `value` (`__proto__` included), quoted and cut for a message. */
+function unknownKeys(value: object, known: readonly string[]): string | undefined {
+  const extra = Object.keys(value).filter((k) => !known.includes(k));
+  return extra.length === 0 ? undefined : cutForMessage(extra.map((k) => JSON.stringify(k)).join(", "));
+}
+
 /**
  * The request body a list method sends for `req`, checked before anything is sent.
  *
+ * - `req` is an object with only `filter`, `range`, `orderby` and `all`, or
+ *   `undefined`/`null` (no request: the default page). Anything else — a number, a
+ *   string, an array, an unknown key such as a misspelled `rnage` or a `count` outside
+ *   `range` — is a `MudabValidationError`, not a silently ignored input.
+ * - `range` holds only `from` and `count`.
  * - `{ all: true }` sends no range (the whole table); `all` together with a `range`,
  *   or an `all` that is not a boolean, is a `MudabValidationError`.
  * - Otherwise the range is completed to a page: a missing `count` becomes
@@ -235,11 +258,22 @@ export const DEFAULT_PAGE_SIZE = 100;
  * `filter`/`orderby` are passed through (the server ignores them); `all` is never
  * sent. Idempotent for a request without `all`.
  */
-export function normalizeRange(req: ListRequest = {}): FilterRequest {
+export function normalizeRange(req: ListRequest | null = {}): FilterRequest {
+  if (req === null) req = {};
+  if (typeof req !== "object" || Array.isArray(req)) {
+    throw new MudabValidationError(`Invalid request: expected an object, got ${kindOf(req)}.`);
+  }
+  const extra = unknownKeys(req, LIST_REQUEST_KEYS);
+  if (extra !== undefined) {
+    throw new MudabValidationError(
+      `Invalid request: unknown key ${extra}; a request takes ${LIST_REQUEST_KEYS.join(", ")} ` +
+        `(from and count go inside range).`,
+    );
+  }
   const { all, ...body } = req;
   if (all !== undefined && typeof all !== "boolean") {
     throw new MudabValidationError(
-      `Invalid all: expected a boolean, got ${typeof all === "string" ? JSON.stringify(all) : String(all)}.`,
+      `Invalid all: expected a boolean, got ${cutForMessage(typeof all === "string" ? JSON.stringify(all) : String(all))}.`,
     );
   }
   const range: unknown = body.range;
@@ -253,9 +287,11 @@ export function normalizeRange(req: ListRequest = {}): FilterRequest {
   }
   if (range === undefined) return { ...body, range: { from: 0, count: DEFAULT_PAGE_SIZE } };
   if (range === null || typeof range !== "object" || Array.isArray(range)) {
-    throw new MudabValidationError(
-      `Invalid range: expected an object with from and count, got ${JSON.stringify(range)}.`,
-    );
+    throw new MudabValidationError(`Invalid range: expected an object with from and count, got ${kindOf(range)}.`);
+  }
+  const extraRange = unknownKeys(range, RANGE_KEYS);
+  if (extraRange !== undefined) {
+    throw new MudabValidationError(`Invalid range: unknown key ${extraRange}; a range takes from and count.`);
   }
   const { from: rawFrom, count: rawCount } = range as Record<string, unknown>;
   const from = rangeInt("range.from", rawFrom);
@@ -290,7 +326,7 @@ export class MudabClient {
    * {@link normalizeRange}, or with no range for `{ all: true }`) and return the
    * extracted row array.
    */
-  private async filterList<T>(resource: string, req: ListRequest = {}): Promise<T[]> {
+  private async filterList<T>(resource: string, req: ListRequest | null = {}): Promise<T[]> {
     const body = normalizeRange(req);
     const res = await this.engine.postJson<unknown>(resource, body);
     // An error envelope delivered with a 2xx status is the server's failure, with its

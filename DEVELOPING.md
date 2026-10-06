@@ -91,8 +91,9 @@ the CLI adds a hint pointing at the canonical base URL.
   both give the same outcome.
 - `conformance-p*.test.ts` — the workspace's shared conformance checks from the
   2026-10-05 review (P1 credential redaction in CLI output, P2 in library objects, P4 base-URL
-  validation, …); copied across the
-  `*-cli` repos, only the adapter block at the top differs.
+  validation, P5 the transport contract, P6 retries, P7 pipes, P8/P9/P13 charset, 2xx
+  bodies and error classes); copied across the `*-cli` repos, only the adapter block at
+  the top differs.
 
 ## Conventions to keep
 
@@ -131,6 +132,17 @@ the CLI adds a hint pointing at the canonical base URL.
   (`headerValueProblem`/`headerNameProblem`, exported, which `--user-agent` uses too).
   The default transport also turns a header Node refuses into a `MudabNetworkError`,
   never a raw `TypeError`.
+- **Every rejected input is a `MudabValidationError`, every failure a `MudabError`.** A
+  list method's request must be an object with only `filter`, `range`, `orderby`, `all`
+  (`null`/`undefined` mean no request), and `range` only `from`/`count`: a number, a
+  string, an array, or an unknown key (`{ count: 5 }` outside `range`, a misspelled
+  `rnage`) is rejected before any request instead of being ignored. The client options
+  must be an object (`null` is none), `transport` and `sleep` functions, `defaultHeaders`
+  an object. Echoed values and server text are cut at 500 characters (`cutForMessage`,
+  `MAX_MESSAGE_VALUE_LENGTH`, exported); a string option value is quoted. A body that is
+  not JSON names the parser's reason, the content type, the size and how the body starts
+  (an HTML page is called one); a body above Node's longest string (~512 MiB) is a
+  `MudabParseError` saying so, whatever `maxResponseBytes` allows.
 - **Input validation** ([`validate.ts`](src/client/validate.ts)): a rule is a pure
   `<thing>Problem(value)` function that returns why a value is invalid, or `undefined`.
   The library enforces it with `assertValid(name, value, problem)` before any request,

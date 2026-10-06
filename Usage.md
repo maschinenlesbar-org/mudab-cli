@@ -16,7 +16,7 @@ Each command lists one dataset and prints a JSON array of rows to stdout.
 | `--timeout <ms>` | time limit per request in ms, whole response included (0 = no timeout; at most 2147483647) |
 | `--user-agent <ua>` | User-Agent header value (not blank; no control characters or characters above U+00FF — HTTP headers can't carry them) |
 | `--max-retries <n>` | retries for transient 429/503 responses (0..10, default 2). Each retry backs off linearly (200 ms, 400 ms, …), or waits the server's `Retry-After` (seconds or an HTTP date) when that is longer, up to 30 s; a `Retry-After` of 0 or in the past never shortens the backoff. A `Retry-After` above 30 s is not retried: the error surfaces at once (exit 1) and names the requested wait. Network failures (a reset or refused connection, a DNS failure, a timeout) are not retried (exit 6). |
-| `--max-response-bytes <n>` | cap the response body size in bytes (0 = unlimited; default 100 MiB) |
+| `--max-response-bytes <n>` | cap the response body size in bytes (0 = no cap; default 100 MiB). Whatever the cap, a reply above about 512 MiB can't be decoded (Node.js's longest string): it fails with exit 1 and a message saying so; page it with `--from`/`--count`. |
 | `--compact` | print JSON on a single line (for piping to `jq`) |
 | `-V, --version` / `-h, --help` | version / help |
 
@@ -89,7 +89,8 @@ A failed run keeps its exit code when the reader of stderr has gone away (`2>&1 
 - **`measurements` is the largest table.** On 2026-09-15 `--all` returned ~187,000 rows,
   ~42 MB, in about 10 s, under the default 100 MiB `--max-response-bytes`. The server
   cannot filter, so any selection needs the whole table: fetch it once and filter the
-  result. If it outgrows the cap (exit 6), raise `--max-response-bytes`.
+  result. If it outgrows the cap (exit 6), raise `--max-response-bytes` — up to about
+  512 MiB, the most Node.js can decode in one piece; beyond that, page with `--from`/`--count`.
 - **A `range` always sends `from`.** The server answers a count-only range with an
   HTTP 500, so the client always includes `from` (default 0).
 - The data is © its providers — see [DATA_LICENSE.md](DATA_LICENSE.md); terms are not

@@ -5,6 +5,7 @@
 // MUDAB is POST-only with a JSON body (the FilterRequest); every parameter travels
 // in the body, so there is no query-string builder. There is no authentication.
 
+import { constants as bufferConstants } from "node:buffer";
 import { TextDecoder } from "node:util";
 import {
   MAX_TIMEOUT_MS,
@@ -21,6 +22,7 @@ import {
   MudabParseError,
   MudabValidationError,
   credentialsIn,
+  cutForMessage,
   redactCredentials,
   redactUrl,
 } from "./errors.js";
@@ -228,8 +230,23 @@ function intOption(name: string, value: number | undefined, fallback: number, ma
   if (value === undefined) return fallback;
   if (!Number.isSafeInteger(value) || value < 0 || value > max) {
     throw new MudabValidationError(
-      `Invalid option ${name}: expected an integer from 0 to ${max}, got ${String(value)}.`,
+      // A string is quoted, so `"5000"` doesn't read like the number 5000.
+      `Invalid option ${name}: expected an integer from 0 to ${max}, got ` +
+        `${cutForMessage(typeof value === "string" ? JSON.stringify(value) : String(value))}.`,
     );
+  }
+  return value;
+}
+
+/**
+ * Read a function option: `undefined` gives the default; anything else that is not a
+ * function throws a `MudabValidationError`. A string `transport` used to fail only at the
+ * first request, and a bad `sleep` as a raw TypeError on the first retry.
+ */
+function functionOption<F extends (...args: never[]) => unknown>(name: string, value: F | undefined, fallback: F): F {
+  if (value === undefined) return fallback;
+  if (typeof value !== "function") {
+    throw new MudabValidationError(`Invalid option ${name}: expected a function, got ${value === null ? "null" : typeof value}.`);
   }
   return value;
 }
@@ -245,6 +262,12 @@ export function assertHeaderValue(name: string, value: string): string {
 
 /** Check every `defaultHeaders` name (a token) and value; returns a copy. */
 function checkedHeaders(headers: Record<string, string>): Record<string, string> {
+  if (headers === null || typeof headers !== "object" || Array.isArray(headers)) {
+    throw new MudabValidationError(
+      `Invalid option defaultHeaders: expected an object of header names and values, got ` +
+        `${headers === null ? "null" : Array.isArray(headers) ? "an array" : typeof headers}.`,
+    );
+  }
   const out: Record<string, string> = {};
   for (const [name, value] of Object.entries(headers)) {
     assertValid("defaultHeaders name", name, headerNameProblem);
@@ -273,6 +296,14 @@ export class RequestEngine {
   private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(options: EngineOptions = {}) {
+    // A JavaScript caller may pass null for "no options"; treat it like undefined. Anything
+    // else that is not an object would read as "no options" and drop what the caller meant.
+    options = options ?? {};
+    if (typeof options !== "object" || Array.isArray(options)) {
+      throw new MudabValidationError(
+        `Invalid options: expected an object, got ${Array.isArray(options) ? "an array" : typeof options}.`,
+      );
+    }
     // Check the base URL here, not only in the default transport: a library
     // consumer that injects a custom transport would otherwise get no gating at all,
     // and could be steered to a non-http(s) scheme. The raw value is checked, before
@@ -292,7 +323,7 @@ export class RequestEngine {
         return [raw];
       }
     });
-    this.transport = options.transport ?? nodeHttpTransport;
+    this.transport = functionOption("transport", options.transport, nodeHttpTransport);
     // Header values are checked up front: a blank one would be sent as is, a CR/LF
     // would reach a custom transport, and the default transport would fail late with
     // a raw TypeError outside the MudabError hierarchy.
@@ -308,7 +339,7 @@ export class RequestEngine {
       DEFAULT_MAX_RESPONSE_BYTES,
       Number.MAX_SAFE_INTEGER,
     );
-    this.sleep = options.sleep ?? realSleep;
+    this.sleep = functionOption("sleep", options.sleep, realSleep);
   }
 
   /**
@@ -491,8 +522,32 @@ export class RequestEngine {
     try {
       return JSON.parse(text) as T;
     } catch (cause) {
-      throw new MudabParseError(`Failed to parse JSON response from ${path}`, { cause: this.scrubCause(cause) });
+      throw new MudabParseError(this.parseFailure(path, res, text, cause), { cause: this.scrubCause(cause) });
     }
+  }
+
+  /**
+   * Why a body is not JSON, for the parse error: the parser's reason, the content type and
+   * size, and how the body starts (an HTML maintenance page, a byte-order mark, truncation),
+   * all from server text, so control characters are stripped, credentials scrubbed and the
+   * whole cut. "Failed to parse JSON" alone left the user guessing.
+   */
+  private parseFailure(path: string, res: RawResponse, text: string, cause: unknown): string {
+    const reason = cause instanceof Error ? cause.message : String(cause);
+    const head = text.trimStart();
+    const kind = head.startsWith("<")
+      ? " It looks like an HTML page (a maintenance or error page from a proxy?), not JSON."
+      : "";
+    const start = head.length > 80 ? `${head.slice(0, 80)}…` : head;
+    const contentType = res.contentType === "" ? "no content type" : `content type ${JSON.stringify(res.contentType)}`;
+    return cutForMessage(
+      sanitizeServerText(
+        this.scrub(
+          `Failed to parse JSON response from ${path}: ${reason}. The reply (${contentType}, ` +
+            `${res.data.byteLength} bytes) starts with ${JSON.stringify(start)}.${kind}`,
+        ),
+      ),
+    );
   }
 
   private toApiError(
@@ -503,8 +558,14 @@ export class RequestEngine {
     locationHeader?: string,
     retryAfterMs?: number,
   ): MudabApiError {
-    // The body is kept on the error (`body`) and may echo the request URL: scrub it.
-    const text = this.scrub(body.toString("utf8"));
+    // The body is kept on the error (`body`) and may echo the request URL: scrub it. A body
+    // too large to become a string (above ~512 MiB) is left out rather than crashing here.
+    let text = "";
+    try {
+      text = this.scrub(body.toString("utf8"));
+    } catch {
+      // ERR_STRING_TOO_LONG: no detail, the status says enough.
+    }
     let detail: string | undefined;
     try {
       const parsed = JSON.parse(text) as { detail?: unknown; message?: unknown; error?: unknown };
@@ -535,6 +596,9 @@ export class RequestEngine {
   }
 }
 
+/** Node's longest string, in UTF-16 code units (2^29 - 24 on 64-bit builds). */
+const MAX_STRING_LENGTH = bufferConstants.MAX_STRING_LENGTH;
+
 /**
  * Decode a response body by the charset its Content-Type names (UTF-8 when it names
  * none; the live API declares `application/json;charset=UTF-8`). TextDecoder drops a
@@ -551,7 +615,19 @@ function decodeBody(body: Buffer, contentType: string, path: string): string {
   } catch {
     throw new MudabParseError(`Unsupported response charset "${sanitizeServerText(charset).slice(0, 100)}" from ${path}.`);
   }
-  return decoder.decode(body);
+  try {
+    return decoder.decode(body);
+  } catch (cause) {
+    // A body above Node's longest string (about 512 MiB of text) can't be decoded, whatever
+    // maxResponseBytes allows: say so, instead of a raw ERR_STRING_TOO_LONG outside the
+    // MudabError hierarchy ("Unexpected error" on the CLI).
+    throw new MudabParseError(
+      `The response from ${path} (${body.byteLength} bytes) is too large to process: Node.js can't ` +
+        `hold more than ${MAX_STRING_LENGTH} characters of text (about 512 MiB) in one string, whatever ` +
+        `maxResponseBytes allows. Fetch it in pages (range; --from/--count on the CLI).`,
+      { cause },
+    );
+  }
 }
 
 /**

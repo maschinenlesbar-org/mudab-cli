@@ -71,7 +71,8 @@ export function buildProgram(deps: CliDeps = defaultDeps): Command {
     )
     .option(
       "--max-response-bytes <n>",
-      "cap response body size in bytes (0 = unlimited; default 100 MiB)",
+      "cap response body size in bytes (0 = no cap, but a reply above about 512 MiB can't be " +
+        "decoded; default 100 MiB)",
       parseIntArg,
     )
     .option("--compact", "print JSON on a single line instead of pretty-printed")
