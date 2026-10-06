@@ -88,6 +88,9 @@ the CLI adds a hint pointing at the canonical base URL.
   and the `parity()` helper (`test/helpers.ts`), which sends one input through `run()`
   and through the library, each on a recording mock transport, so a test can assert
   both give the same outcome.
+- `conformance-p*.test.ts` — the workspace's shared conformance checks from the
+  2026-10-05 review (P1 credential redaction in CLI output, …); copied across the
+  `*-cli` repos, only the adapter block at the top differs.
 
 ## Conventions to keep
 
@@ -130,6 +133,12 @@ the CLI adds a hint pointing at the canonical base URL.
   failure: `MudabNetworkError` is kept for the default transport's per-hop scheme
   check. Userinfo is kept
   for the request and redacted (`redactUrl`) in every error message.
+- **No credential in the CLI's output:** `run.ts` (`withRedactedOutput`) takes the exact
+  userinfo of every argument (`credentialsIn`, exported) and replaces it with `***` in
+  everything it prints — commander's usage errors, which echo a rejected `--base-url`
+  value, and its other messages — so a password with spaces, quotes, `#`, `?` or `/` is
+  caught as well as an ordinary one. `redactUrl` (exported) falls back to the same
+  text-based cut for a value that doesn't parse as a URL.
 - **Scaffold origin:** this repo was scaffolded from `entgeltatlas-cli`; the API-key /
   X-API-Key machinery was stripped because MUDAB needs no auth.
 

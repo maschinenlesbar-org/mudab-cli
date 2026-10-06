@@ -28,6 +28,8 @@ export {
   MudabValidationError,
   MudabParseError,
   redactUrl,
+  credentialsIn,
+  redactCredentials,
 } from "./errors.js";
 export { assertValid, baseUrlProblem, headerNameProblem, headerValueProblem } from "./validate.js";
 export type { Problem } from "./validate.js";
