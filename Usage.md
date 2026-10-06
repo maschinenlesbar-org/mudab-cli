@@ -76,11 +76,13 @@ mudab plc-measurements --all --compact \
 
 | Code | Meaning |
 |---|---|
-| `0` | success (help/version included); an empty result also exits 0 |
+| `0` | success (help/version included); an empty result also exits 0, and so does a run whose output reader stops early (`\| head`) |
 | `1` | API/logical error (a redirect included — it is not followed, the message names its target), a reply that is not the expected row wrapper (e.g. an error object or an empty body sent with status 200), or a catch-all |
 | `2` | usage error (bad flags, unknown command, `--all` with `--from/--count`, `--from` + `--count` above 2147483647) |
 | `4` | HTTP 404 |
 | `6` | network / transport failure (DNS, connection, timeout, response size-cap) |
+
+A failed run keeps its exit code when the reader of stderr has gone away (`2>&1 | true`).
 
 ## Notes
 

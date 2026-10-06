@@ -2,7 +2,11 @@
 // Bin shim: parse argv, run the CLI, and set the process exit code. All real
 // logic lives in run.ts (testable without spawning a subprocess).
 
+import { handleOutputErrors } from "./io.js";
 import { run } from "./run.js";
+
+// Before run(): a reader that stops early (`| head`) must not turn into an EPIPE stack trace.
+handleOutputErrors();
 
 run(process.argv.slice(2)).then(
   (code) => {
