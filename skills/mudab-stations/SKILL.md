@@ -62,6 +62,9 @@ mudab plc-stations --all --compact \
 
 # Measurement stations in the biology compartment (unique: the table repeats rows)
 mudab stations --all --compact | jq '[.[] | select(.COMPT_DS=="BL")] | unique'
+
+# How many measurement stations there are: count distinct names, not rows
+mudab stations --all --compact | jq '[.[].STATNAME_ST] | unique | length'
 ```
 
 ## Traps
@@ -75,9 +78,14 @@ mudab stations --all --compact | jq '[.[] | select(.COMPT_DS=="BL")] | unique'
   IOW/Ostsee, `Darss Sill` BSH and IOW, `Cuxhaven` WGEHH and DENI, some with `INSTITUT`
   `null`). Report every match for such a name instead of picking one. Many project
   stations have no measurement station at all (e.g. every `BFN` row).
-- **`stations` repeats rows.** It had 83,916 rows but only 68,571 distinct ones
-  (2026-09-15), so counts of rows overstate stations. Apply `unique` (or count distinct
-  `STATNAME_ST`) before counting. At ~9 MB, `stations --all` is fine to fetch once.
+- **`stations` repeats rows, and lists a station once per compartment.** It had 83,916
+  rows but only 68,571 distinct ones (2026-09-15), so counts of rows overstate stations.
+  To count **stations**, count distinct `STATNAME_ST` (`[.[].STATNAME_ST] | unique |
+  length`). `unique` on whole rows is **not** a station count: it removes only identical
+  rows, and a station sampled in two compartments (`BL` and `CW`) stays two rows. In the
+  2026-09-15 run the per-compartment counts add up to more than the distinct stations for
+  every institute (BSH: CW 1,388 + CS 190 = 1,578 rows for 1,423 stations). Count per
+  compartment only when the question is about compartments, and say so. At ~9 MB, `stations --all` is fine to fetch once.
 - **PLC stations are not all rivers.** `MON_TYPE` is `MON_RIVER_LOAD`, `MUNCP_FL_LD`
   (municipal treatment plants), `STAT_FL_CONC` (flow gauges) or `UNMONITORED` (two
   pseudo-stations with coordinates 0/0). Filter on it when the user means rivers.
