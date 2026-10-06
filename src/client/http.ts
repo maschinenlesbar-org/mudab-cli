@@ -48,7 +48,7 @@ export const nodeHttpTransport: Transport = (request) =>
     try {
       url = new URL(request.url);
     } catch {
-      reject(new MudabNetworkError(`Invalid URL: ${request.url}`));
+      reject(new MudabNetworkError(`Invalid URL: ${redactUrl(request.url)}`));
       return;
     }
 

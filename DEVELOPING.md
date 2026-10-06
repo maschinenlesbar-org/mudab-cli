@@ -139,6 +139,11 @@ the CLI adds a hint pointing at the canonical base URL.
   value, and its other messages — so a password with spaces, quotes, `#`, `?` or `/` is
   caught as well as an ordinary one. `redactUrl` (exported) falls back to the same
   text-based cut for a value that doesn't parse as a URL.
+- **No credential in a logged client or error:** the engine keeps the base URL in a real
+  `#private` field (so `console.log(client)`, `util.inspect` and `JSON.stringify` never
+  show it), and scrubs its userinfo (raw and percent-decoded) from error bodies, details,
+  transport error text and the `cause` chain. Whatever a custom transport throws reaches
+  the caller as a `MudabNetworkError` (the original, scrubbed, as `cause`).
 - **Scaffold origin:** this repo was scaffolded from `entgeltatlas-cli`; the API-key /
   X-API-Key machinery was stripped because MUDAB needs no auth.
 
