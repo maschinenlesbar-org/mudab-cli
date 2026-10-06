@@ -71,6 +71,11 @@ Each method returns a typed row array (the client extracts it from the API's
 single-key wrapper object). Only `range` is honoured by the server — see the note in
 `FilterRequest`.
 
+> **List methods return a 100-row page by default.** Without a `range`, every method
+> fetches rows 0–99 (`DEFAULT_PAGE_SIZE`); pass `{ range: { from, count } }` for another
+> page, or `{ all: true }` for the whole table (`measurements` ≈ 187,000 rows / 42 MB).
+> Since 0.1.0 — before, a call without a range returned the whole table.
+
 ## Documentation
 
 - [Usage.md](Usage.md) — full command reference and exit codes
