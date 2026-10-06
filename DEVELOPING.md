@@ -100,10 +100,11 @@ the CLI adds a hint pointing at the canonical base URL.
 - **Strict TS** (`strict`, `noUncheckedIndexedAccess`, `noUnusedLocals`) and ESM
   (`module: NodeNext`). Keep passing on Node 20/22/24.
 - **Exit codes** (`run.ts`): help/version → 0; usage → 2; 404 → 4; network → 6; other → 1.
-- **Retry/backoff:** transient `429`/`503` retried up to `maxRetries`, honouring
-  `Retry-After` (delay-seconds or an IMF-fixdate, parsed strictly by `parseRetryAfter`)
-  up to `MAX_RETRY_AFTER_MS` (30 s; a longer one is not retried, the error surfaces at
-  once), else linear backoff (`retryDelayMs * attempt`). Network failures, resets
+- **Retry/backoff:** transient `429`/`503` retried up to `maxRetries`. The linear
+  backoff (`retryDelayMs * attempt`) is the floor; a `Retry-After` (delay-seconds or an
+  IMF-fixdate, parsed strictly by `parseRetryAfter`) can only lengthen a wait, up to
+  `MAX_RETRY_AFTER_MS` (30 s). A longer one is not retried: the error surfaces at once,
+  names the requested wait and carries it as `MudabApiError.retryAfterMs`. Network failures, resets
   included, are **not** retried: every call is a POST that may fetch a whole table, and
   the host has blocked clients before.
 - **The engine enforces the transport contract** for any transport, not only the
