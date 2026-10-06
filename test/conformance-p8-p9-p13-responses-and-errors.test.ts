@@ -39,18 +39,24 @@ const malformedBodies: unknown[] = [
   [42],
   [[]],
 ];
+/**
+ * A client for the call cases: its transport never touches the network (with the default
+ * base URL a missed check would otherwise reach geoportal.bafg.de) and fails the case.
+ */
+const offline = (): Client =>
+  new Client({ transport: async () => assert.fail("a rejected input must not send a request") });
 /** Library calls with wrong-typed or out-of-range input. */
 const badCalls: Array<[string, () => unknown]> = [
-  ["stations(5)", () => new Client().stations(5 as unknown as ListRequest)],
-  ["stations('x')", () => new Client().stations("x" as unknown as ListRequest)],
-  ["stations([])", () => new Client().stations([] as unknown as ListRequest)],
-  ["stations({ count: 5 })", () => new Client().stations({ count: 5 } as unknown as ListRequest)],
-  ["stations({ range: { form: 5 } })", () => new Client().stations({ range: { form: 5 } } as unknown as ListRequest)],
-  ["stations({ range: { count: '5' } })", () => new Client().stations({ range: { count: "5" as unknown as number } })],
-  ["stations({ all: 'yes' })", () => new Client().stations({ all: "yes" as unknown as boolean })],
-  ["parameters(5)", () => new Client().parameters(5 as unknown as ListRequest)],
-  ["parameters({}, 5)", () => new Client().parameters({}, 5 as unknown as ParameterCompartment)],
-  ["parameters({}, null)", () => new Client().parameters({}, null as unknown as ParameterCompartment)],
+  ["stations(5)", () => offline().stations(5 as unknown as ListRequest)],
+  ["stations('x')", () => offline().stations("x" as unknown as ListRequest)],
+  ["stations([])", () => offline().stations([] as unknown as ListRequest)],
+  ["stations({ count: 5 })", () => offline().stations({ count: 5 } as unknown as ListRequest)],
+  ["stations({ range: { form: 5 } })", () => offline().stations({ range: { form: 5 } } as unknown as ListRequest)],
+  ["stations({ range: { count: '5' } })", () => offline().stations({ range: { count: "5" as unknown as number } })],
+  ["stations({ all: 'yes' })", () => offline().stations({ all: "yes" as unknown as boolean })],
+  ["parameters(5)", () => offline().parameters(5 as unknown as ListRequest)],
+  ["parameters({}, 5)", () => offline().parameters({}, 5 as unknown as ParameterCompartment)],
+  ["parameters({}, null)", () => offline().parameters({}, null as unknown as ParameterCompartment)],
   ["normalizeRange(5)", () => normalizeRange(5 as unknown as ListRequest)],
   ["timeoutMs: 'x'", () => new Client({ timeoutMs: "x" as unknown as number })],
   ["timeoutMs: -1", () => new Client({ timeoutMs: -1 })],
