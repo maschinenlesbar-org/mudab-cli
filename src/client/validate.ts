@@ -66,7 +66,8 @@ export const headerNameProblem: Problem<string> = (name) =>
  *   would post to `/x%20/STATION_SMALL`.
  *
  * Userinfo (`user:pw@`) is allowed: it is sent as Basic auth and redacted in every
- * error message. The reasons never repeat the value, so a credential in it cannot
+ * error message. A `%` in it must start a valid escape (`%25` for a literal one), as
+ * Node decodes it for the Authorization header. The reasons never repeat the value, so a credential in it cannot
  * reach a message. The engine enforces it (`Invalid baseUrl: <reason>`), and the
  * CLI's `--base-url` parser calls it.
  */
@@ -86,6 +87,15 @@ export const baseUrlProblem: Problem<string> = (value) => {
   for (let i = 0; i < value.length; i++) {
     const c = value.charCodeAt(i);
     if (c < 0x20 || c === 0x7f) return "A base URL cannot contain control characters.";
+  }
+  // Node decodes the userinfo into the Authorization header and throws "URI malformed" for a
+  // "%" that isn't an escape — at request time, as a network error. Reject it here.
+  for (const part of [url.username, url.password]) {
+    try {
+      decodeURIComponent(part);
+    } catch {
+      return 'The user name or password has a "%" that is not followed by two hex digits; write a literal "%" as %25.';
+    }
   }
   return undefined;
 };

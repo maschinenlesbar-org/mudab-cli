@@ -89,7 +89,8 @@ the CLI adds a hint pointing at the canonical base URL.
   and through the library, each on a recording mock transport, so a test can assert
   both give the same outcome.
 - `conformance-p*.test.ts` — the workspace's shared conformance checks from the
-  2026-10-05 review (P1 credential redaction in CLI output, …); copied across the
+  2026-10-05 review (P1 credential redaction in CLI output, P2 in library objects, P4 base-URL
+  validation, …); copied across the
   `*-cli` repos, only the adapter block at the top differs.
 
 ## Conventions to keep
@@ -125,7 +126,9 @@ the CLI adds a hint pointing at the canonical base URL.
   `baseUrlProblem` (`validate.ts`, exported), covers it: a `file:`, `ftp:` or malformed
   value, a query or fragment (paths are appended as a string, so they would swallow
   every resource path), surrounding whitespace or a control character anywhere
-  (`new URL()` drops them silently, but the raw string is what the engine joins). The
+  (`new URL()` drops them silently, but the raw string is what the engine joins), and
+  a `%` in the user name or password that doesn't start an escape (write a literal `%`
+  as `%25`; Node would fail to decode it for the Authorization header at request time). The
   CLI's `parseBaseUrl` calls it at parse time (usage error); the engine constructor
   checks the raw `baseUrl` before stripping trailing slashes and throws
   `MudabValidationError` (`Invalid baseUrl: <reason>`), so a custom transport never
