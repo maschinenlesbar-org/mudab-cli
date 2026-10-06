@@ -165,16 +165,26 @@ export function escapeControlChars(json: string): string {
 }
 
 /**
- * JSON.stringify, pretty or compact. A deeply nested value (a hostile or broken
- * response) overflows the stack — the pretty form far sooner than the compact one,
- * which is why the message suggests --compact. The RangeError becomes a MudabError
- * so the CLI prints a clear message instead of "Unexpected error: Maximum call stack
- * size exceeded".
+ * JSON.stringify, pretty or compact. Two RangeErrors become a MudabError with a clear
+ * message instead of "Unexpected error: …":
+ *
+ * - an output longer than Node's longest string (about 512 MiB of text, "Invalid string
+ *   length") — a big flat table, pretty-printed (which adds about a third), hits it
+ *   first, so the pretty message suggests --compact, and both suggest paging;
+ * - a deeply nested value (a hostile or broken response) overflows the stack — the
+ *   pretty form far sooner than the compact one.
  */
 function stringifyJson(value: unknown, compact: boolean): string {
   try {
     return compact ? JSON.stringify(value) : JSON.stringify(value, null, 2);
   } catch (err) {
+    if (err instanceof RangeError && /invalid string length/i.test(err.message)) {
+      throw new MudabError(
+        "The output is too large to build as one string (Node.js holds at most about 512 MiB of text); " +
+          (compact ? "page it with --from/--count." : "try --compact, which is smaller, or page it with --from/--count."),
+        { cause: err },
+      );
+    }
     if (err instanceof RangeError) {
       throw new MudabError(
         compact

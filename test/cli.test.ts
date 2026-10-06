@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { run } from "../src/cli/run.js";
 import { MudabClient } from "../src/client/client.js";
 import type { CliDeps } from "../src/cli/io.js";
+import { renderJson } from "../src/cli/shared.js";
+import { MudabError } from "../src/client/errors.js";
 import type { HttpRequest, HttpResponse } from "../src/client/http.js";
 import { makeMockTransport, jsonResponse, jsonBodyOf, rawResponse } from "./helpers.js";
 import * as fx from "./fixtures.js";
@@ -248,4 +250,20 @@ test("a deeply nested response fails cleanly instead of overflowing the stack", 
     assert.equal(code, 1);
     assert.deepEqual(compact.err, ["Error: The response is nested too deeply to print."]);
   }
+});
+
+test("an output too large for one string is reported as such, not as nesting", () => {
+  // Stands in for a ~450 MB table: JSON.stringify throws V8's "Invalid string length".
+  const huge = { toJSON: () => { throw new RangeError("Invalid string length"); } };
+  const deps: CliDeps = { io: { out: () => {}, err: () => {} }, createClient: () => new MudabClient() };
+  assert.throws(
+    () => renderJson(deps, {}, huge),
+    (err) =>
+      err instanceof MudabError &&
+      /^The output is too large to build as one string .*; try --compact, which is smaller, or page it with --from\/--count\.$/.test(err.message),
+  );
+  assert.throws(
+    () => renderJson(deps, { compact: true }, huge),
+    (err) => err instanceof MudabError && /too large to build as one string .*; page it with --from\/--count\.$/.test(err.message),
+  );
 });
