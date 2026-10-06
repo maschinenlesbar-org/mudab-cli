@@ -269,3 +269,23 @@ test("a reply with more rows than the range asked for is a MudabParseError, not 
   // With { all: true } there is no range to check.
   assert.equal((await clientFor(many).client.stations({ all: true })).length, 7);
 });
+
+test("a number beyond the double range is a MudabParseError, never null", async () => {
+  for (const [resource, body, call] of [
+    ["/MV_STATION_MSMNT", '{"MV_STATION_MSMNT":[{"STATNAME_ST":"A","VALUE_MS":1e309}]}', (c: MudabClient) => c.measurements({ all: true })],
+    ["/V_MESSWERTE_PLC", '{"V_MESSWERTE_PLC":[{"NAME":"Ntot","VALUE":-2e308,"VAL_UNIT":"t/a"}]}', (c: MudabClient) => c.plcMeasurements({ all: true })],
+  ] as const) {
+    const mt = makeMockTransport(() => rawResponse(body, "application/json"));
+    await assert.rejects(
+      () => call(new MudabClient({ transport: mt.transport })),
+      (err) =>
+        err instanceof MudabParseError &&
+        err.message.startsWith(`Unexpected value from ${resource}: row 0 field "VALUE`) &&
+        /beyond the range of a double/.test(err.message),
+      body,
+    );
+  }
+  // Ordinary IEEE-754 rounding (1e-400 -> 0, 2^53 + 1 -> 2^53) is data, as in jq.
+  const mt = makeMockTransport(() => rawResponse('{"MV_STATION_MSMNT":[{"VALUE_MS":1e-400}]}', "application/json"));
+  assert.deepEqual(await new MudabClient({ transport: mt.transport }).measurements({ all: true }), [{ VALUE_MS: 0 }]);
+});

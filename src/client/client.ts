@@ -163,7 +163,8 @@ function describeShape(value: unknown): string {
  * wrapping the array. The key is not reliably the path name (e.g. `/STATION_SMALL` ->
  * key `V_STATION_SMALL`), but it is fixed per resource: for a path in
  * {@link WRAPPER_KEYS} only that key is accepted, for any other path any one key. A
- * bare array is taken as is. Every row must be a JSON object.
+ * bare array is taken as is. Every row must be a JSON object, and no field a number
+ * beyond the range of a double (JSON.parse makes it Infinity, printed as `null`).
  *
  * Anything else — an error envelope (`{"errors":[…]}`) or error object sent with status
  * 200, another table's rows, a second key, `null`, a string, a row that is not an
@@ -184,13 +185,26 @@ export function extractRows<T>(res: unknown, path = "the API"): T[] {
   if (!Array.isArray(rows)) {
     throw new MudabParseError(`Unexpected response shape from ${path}: ${expected}, got ${describeShape(res)}.`);
   }
-  const bad = rows.findIndex((row) => !isRecord(row));
-  if (bad >= 0) {
-    const row = rows[bad];
-    const what = row === null ? "null" : Array.isArray(row) ? "an array" : `a ${typeof row}`;
-    throw new MudabParseError(
-      `Unexpected response shape from ${path}: ${expected} of objects, got ${what} as row ${bad}.`,
-    );
+  for (let i = 0; i < rows.length; i++) {
+    const row: unknown = rows[i];
+    if (!isRecord(row)) {
+      const what = row === null ? "null" : Array.isArray(row) ? "an array" : `a ${typeof row}`;
+      throw new MudabParseError(
+        `Unexpected response shape from ${path}: ${expected} of objects, got ${what} as row ${i}.`,
+      );
+    }
+    // JSON.parse reads a number beyond the double range (1e309) as Infinity, which
+    // JSON.stringify then prints as null: "no value" in the docs, so such a row would be
+    // dropped as empty. Rows are flat, so their own fields are checked.
+    for (const [field, value] of Object.entries(row)) {
+      if (typeof value === "number" && !Number.isFinite(value)) {
+        throw new MudabParseError(
+          `Unexpected value from ${path}: row ${i} field ${cutForMessage(JSON.stringify(field))} is a ` +
+            "number beyond the range of a double (it reads as Infinity, and would print as null, " +
+            '"no value").',
+        );
+      }
+    }
   }
   return rows as T[];
 }
