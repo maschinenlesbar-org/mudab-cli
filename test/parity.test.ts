@@ -7,7 +7,6 @@ import assert from "node:assert/strict";
 import { MudabClient } from "../src/client/client.js";
 import type { ListRequest } from "../src/client/types.js";
 import { jsonResponse, parity, requestShapes, type CliOutcome, type LibOutcome } from "./helpers.js";
-import * as fx from "./fixtures.js";
 
 type Call = (c: MudabClient) => Promise<unknown>;
 
@@ -34,7 +33,7 @@ test("parity: a list call without a full range sends the same default page from 
   ];
   for (const [argv, call] of cases) {
     const { cli, lib } = await parity(argv, (transport) => call(new MudabClient({ transport })), () =>
-      jsonResponse(fx.stations),
+      jsonResponse([]),
     );
     assertSameRequests(argv, cli, lib);
     const body = JSON.parse(lib.requests[0]!.body!.toString()) as { range?: { count?: number } };
@@ -49,7 +48,7 @@ test("parity: --all and { all: true } both send no range", async () => {
   ];
   for (const [argv, call] of cases) {
     const { cli, lib } = await parity(argv, (transport) => call(new MudabClient({ transport })), () =>
-      jsonResponse(fx.stations),
+      jsonResponse([]),
     );
     assertSameRequests(argv, cli, lib);
     assert.equal(lib.requests[0]!.body!.toString(), "{}");
@@ -99,7 +98,7 @@ test("parity: tab and Latin-1 in userAgent pass on both sides", async () => {
   const ua = "müdab\t1";
   const { cli, lib } = await parity(["--compact", "--user-agent", ua, "stations"], (transport) =>
     new MudabClient({ transport, userAgent: ua }).stations(),
-    () => jsonResponse(fx.stations),
+    () => jsonResponse([]),
   );
   assertSameRequests(["--user-agent", ua], cli, lib);
   assert.equal(lib.requests[0]!.headers?.["User-Agent"], ua);
@@ -126,7 +125,7 @@ test("parity: a clean base URL with a path prefix and a trailing slash works on 
   const baseUrl = "https://h.example/mirror/";
   const { cli, lib } = await parity(["--compact", "--base-url", baseUrl, "stations"], (transport) =>
     new MudabClient({ transport, baseUrl }).stations(),
-    () => jsonResponse(fx.stations),
+    () => jsonResponse([]),
   );
   assertSameRequests(["--base-url", baseUrl], cli, lib);
   assert.equal(lib.requests[0]!.url, "https://h.example/mirror/STATION_SMALL");
@@ -142,7 +141,7 @@ test("parity: a count without a from sends from 0 from the CLI and the library",
   ];
   for (const [argv, call] of cases) {
     const { cli, lib } = await parity(argv, (transport) => call(new MudabClient({ transport })), () =>
-      jsonResponse(fx.stations),
+      jsonResponse([]),
     );
     assertSameRequests(argv, cli, lib);
     const body = JSON.parse(lib.requests[0]!.body!.toString()) as { range?: { from?: number } };

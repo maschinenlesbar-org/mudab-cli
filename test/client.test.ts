@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MudabClient, extractRows, normalizeRange, DEFAULT_PAGE_SIZE, MAX_RANGE_END } from "../src/client/client.js";
-import { MudabNetworkError, MudabParseError, MudabValidationError } from "../src/client/errors.js";
+import { MudabApiError, MudabNetworkError, MudabParseError, MudabValidationError } from "../src/client/errors.js";
 import { makeMockTransport, jsonResponse, jsonBodyOf, rawResponse } from "./helpers.js";
 import * as fx from "./fixtures.js";
 
@@ -59,19 +59,69 @@ test("plcStations() POSTs to /V_PLC_STATION", async () => {
 
 test("an empty result yields an empty array", async () => {
   const { client } = clientFor(fx.empty);
-  assert.deepEqual(await client.stations(), []);
+  assert.deepEqual(await client.parameters(), []);
 });
 
-test("extractRows takes the one wrapped array, whatever the key, or a bare array", () => {
-  assert.deepEqual(extractRows({ ANY_KEY: [1, 2] }), [1, 2]);
+test("extractRows takes the one wrapped array of objects, or a bare array of objects", () => {
+  assert.deepEqual(extractRows({ ANY_KEY: [{ a: 1 }] }), [{ a: 1 }]);
   assert.deepEqual(extractRows({ V_STATION_SMALL: [] }), []);
-  assert.deepEqual(extractRows([3, 4]), [3, 4]);
+  assert.deepEqual(extractRows({ V_STATION_SMALL: [{ a: 1 }] }, "/STATION_SMALL"), [{ a: 1 }]);
+  assert.deepEqual(extractRows([{ b: 2 }]), [{ b: 2 }]);
+});
+
+test("extractRows accepts only the resource's own wrapper key, and only object rows", () => {
+  assert.throws(
+    () => extractRows({ V_MESSWERTE_PLC: [{ NAME: "Ntot" }] }, "/MV_STATION_MSMNT"),
+    (err) =>
+      err instanceof MudabParseError &&
+      err.message ===
+        'Unexpected response shape from /MV_STATION_MSMNT: expected a JSON object wrapping one row array under ' +
+          '"MV_STATION_MSMNT", got an object with the key "V_MESSWERTE_PLC".',
+  );
+  for (const [rows, what] of [
+    [[null, null], "null as row 0"],
+    [[{ a: 1 }, null, "x"], "null as row 1"],
+    [["Datenbankfehler"], "a string as row 0"],
+    [[[1, 2]], "an array as row 0"],
+    [[5], "a number as row 0"],
+  ] as const) {
+    assert.throws(
+      () => extractRows({ V_STATION_SMALL: rows }, "/STATION_SMALL"),
+      (err) => err instanceof MudabParseError && err.message.endsWith(`of objects, got ${what}.`),
+      JSON.stringify(rows),
+    );
+  }
+});
+
+test("a 200 error envelope is a MudabApiError with the server's messages, never rows", async () => {
+  const cases: [unknown, string][] = [
+    [
+      { errors: [{ code: "ORA-00942", message: "table or view does not exist" }] },
+      "ORA-00942: table or view does not exist",
+    ],
+    [{ error: ["Datenbankfehler: ORA-12541 TNS:no listener"] }, "Datenbankfehler: ORA-12541 TNS:no listener"],
+    [{ errors: [{ message: "ORA-01555: snapshot too old" }, "second"] }, "ORA-01555: snapshot too old; second"],
+    [{ error: "Datenbankfehler", rows: [] }, "Datenbankfehler"],
+    [{ errors: [] }, "no message"],
+  ];
+  for (const [body, detail] of cases) {
+    const { client } = clientFor(body);
+    await assert.rejects(
+      () => client.measurements({ all: true }),
+      (err) =>
+        err instanceof MudabApiError &&
+        err.status === 200 &&
+        err.detail === `the server answered with an error instead of rows: ${detail}` &&
+        err.message.startsWith("HTTP 200 for POST ") &&
+        err.message.includes("/MV_STATION_MSMNT: the server answered with an error instead of rows"),
+      JSON.stringify(body),
+    );
+  }
 });
 
 test("a 200 reply of any other shape is a MudabParseError naming what came back", async () => {
   const cases: [string, RegExp][] = [
     ['{"message":"ORA-00942: table or view does not exist"}', /got an object with the key "message" \(message: "ORA-00942: table or view does not exist"\)\.$/],
-    ['{"error":"Datenbankfehler","rows":[]}', /got an object with the keys "error", "rows" \(error: "Datenbankfehler"\)\.$/],
     ['{"meta":["x"],"V_STATION_SMALL":[{"a":1}]}', /got an object with the keys "meta", "V_STATION_SMALL"\.$/],
     ['{"__proto__":[{"x":1}],"R":[{"a":1}]}', /got an object with the keys "__proto__", "R"\.$/],
     ['{"V_STATION_SMALL":null}', /got an object with the key "V_STATION_SMALL"\.$/],
@@ -88,7 +138,7 @@ test("a 200 reply of any other shape is a MudabParseError naming what came back"
       (err) =>
         err instanceof MudabParseError &&
         err.message.startsWith(
-          "Unexpected response shape from /STATION_SMALL: expected a JSON object wrapping one row array, got ",
+          'Unexpected response shape from /STATION_SMALL: expected a JSON object wrapping one row array under "V_STATION_SMALL", got ',
         ) &&
         message.test(err.message),
       body,

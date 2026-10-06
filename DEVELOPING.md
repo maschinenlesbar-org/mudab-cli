@@ -58,7 +58,7 @@ OpenAPI spec (`bundesAPI/mudab-api`) is unreliable, so trust the live behaviour:
 | Quirk | Reality | Where handled |
 |---|---|---|
 | **Base URL** | `https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements`. The older `MUDABAnwendung` path 301-redirects away. | `engine.ts` `DEFAULT_BASE_URL` |
-| **Response wrapper key** | A single-key object, but the key is NOT reliably the path name (`/STATION_SMALL` → key `V_STATION_SMALL`). | `client.ts` `extractRows` takes the array under the one key (or a bare array); any other 200 reply — an error object, a second key, `null`, an empty body — is a `MudabParseError` naming what came back (exit 1), never `[]` |
+| **Response wrapper key** | A single-key object, but the key is NOT reliably the path name (`/STATION_SMALL` → key `V_STATION_SMALL`); it is fixed per resource (see `plan.md`). | `client.ts` `WRAPPER_KEYS` (exported) maps each resource to its key; `extractRows` takes the array under that key only (or a bare array), and every row must be an object. An error envelope sent with 200 (`{"errors":[…]}`, `{"error":…}`) is a `MudabApiError` with the server's messages (`reportedErrors`, exported); any other reply — another table's rows, an error object, a second key, `null`, a non-object row, an empty body — is a `MudabParseError` naming what came back. Both exit 1, never `[]`. If the live API ever renames a wrapper key, every call on that resource fails with a message naming the new key: update `WRAPPER_KEYS` |
 | **`range` requires `from`** | A count-only range (`{count}` without `from`) is answered with **HTTP 500**. | `client.ts` `normalizeRange` always sends `from` (default 0), so `{ range: { count: 5 } }` goes out as `{ from: 0, count: 5 }`, as `--count 5` does |
 | **Range end is a 32-bit int** | `from + count` above 2³¹−1 (2147483647) gets an HTML **403 Forbidden** from the front end; on 2026-09-26 the host then stopped answering the client altogether. | `client.ts` `MAX_RANGE_END` + `normalizeRange` (the defaulted count included); the CLI bounds `--from`/`--count` each (exit 2) and reports the library's range-end error as a usage error with an `--all` hint |
 | **`filter` / `orderby` ignored** | Despite every endpoint being a "filterbare Liste", the live server **ignores** filter and orderby — a filter that should match nothing still returns the full page. | The CLI exposes NO filter/sort options; `FilterRequest` documents the no-op |
@@ -80,7 +80,8 @@ the CLI adds a hint pointing at the canonical base URL.
 - `engine.test.ts` — POST/JSON, retry, no-redirect, JSON + non-JSON error surfacing,
   parse errors, headers. Uses a mock transport.
 - `client.test.ts` — endpoint routing, compartment routing, and the defensive
-  `extractRows` (incl. the `V_STATION_SMALL` wrapper-key mismatch).
+  `extractRows` (incl. the `V_STATION_SMALL` wrapper-key mismatch, another table's key,
+  non-object rows) and the 200 error envelope.
 - `cli.test.ts` — the full CLI via `run()` with a mocked client: paging defaults,
   `--all`, `--compartment`, the offline `compartments`, the `--user-agent`
   control-char guard, and exit codes.

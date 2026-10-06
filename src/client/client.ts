@@ -16,7 +16,7 @@
 //   const cw = (await c.parameters({ all: true })).filter((p) => p.COMPT_DS === "CW"); // whole table
 
 import { RequestEngine, cleanDetail, type EngineOptions } from "./engine.js";
-import { MudabParseError, MudabValidationError } from "./errors.js";
+import { MudabApiError, MudabParseError, MudabValidationError } from "./errors.js";
 import type {
   Compartment,
   FilterRequest,
@@ -83,6 +83,57 @@ function compartmentEndpoint(compartment: unknown): string {
   );
 }
 
+/**
+ * The key each resource wraps its row array in (verified live when the client was built;
+ * see plan.md). It is NOT reliably the path name (`/STATION_SMALL` answers under
+ * `V_STATION_SMALL`), but it is fixed per resource, so a reply under another key — another
+ * table's rows, an error list — is not this resource's data.
+ */
+export const WRAPPER_KEYS: Readonly<Record<string, string>> = Object.freeze({
+  "/STATION_SMALL": "V_STATION_SMALL",
+  "/PROJECTSTATION_SMALL": "V_MUDAB_PROJECTSTATION",
+  "/MV_PARAMETER": "MV_PARAMETER",
+  "/MV_PARAMETER_BIOLOGIE": "MV_PARAMETER_BIOLOGIE",
+  "/MV_PARAMETER_BIOTA": "MV_PARAMETER_BIOTA",
+  "/MV_PARAMETER_WASSER": "MV_PARAMETER_WASSER",
+  "/MV_PARAMETER_SEDIMENT": "MV_PARAMETER_SEDIMENT",
+  "/MV_STATION_MSMNT": "MV_STATION_MSMNT",
+  "/V_PLC_STATION": "V_PLC_STATION",
+  "/V_GEMESSENE_PARA_PLC": "V_GEMESSENE_PARA_PLC",
+  "/V_MESSWERTE_PLC": "V_MESSWERTE_PLC",
+});
+
+/** True for a JSON object that is not an array. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** The text of one reported error: a string, or an object's message/detail/error (with its code). */
+function errorText(item: unknown): string | undefined {
+  if (typeof item === "string") return item.trim() === "" ? undefined : item;
+  if (!isRecord(item)) return undefined;
+  const text = ["message", "detail", "error"].map((k) => item[k]).find((v) => typeof v === "string" && v.trim() !== "");
+  const code = typeof item["code"] === "string" ? item["code"] : undefined;
+  if (typeof text === "string") return code === undefined || text.includes(code) ? text : `${code}: ${text}`;
+  return code;
+}
+
+/**
+ * The messages of an error envelope sent with a 2xx status — an object with an `errors` or
+ * `error` key (`{"errors":[{"code":"ORA-00942","message":"…"}]}`, `{"error":["…"]}`,
+ * `{"error":"…"}`) — joined, cleaned and cut; `undefined` when `res` is no such envelope.
+ * Taken as rows, an error list read as "no data for that station".
+ */
+export function reportedErrors(res: unknown): string | undefined {
+  if (!isRecord(res)) return undefined;
+  const key = Object.keys(res).find((k) => /^errors?$/i.test(k));
+  if (key === undefined) return undefined;
+  const value = res[key];
+  const items = Array.isArray(value) ? value : [value];
+  const texts = items.map(errorText).filter((t): t is string => t !== undefined);
+  return cleanDetail(texts.length > 0 ? texts.join("; ") : "no message");
+}
+
 /** Name what came back instead of the row wrapper, for the shape error. */
 function describeShape(value: unknown): string {
   if (value === null) return "null";
@@ -109,23 +160,39 @@ function describeShape(value: unknown): string {
 
 /**
  * Extract the row array from a MUDAB response. The API returns a single-key object
- * wrapping the array, but the key is not reliably the path name (e.g.
- * `/STATION_SMALL` -> key `V_STATION_SMALL`), so any one key is accepted; a bare
- * array is taken as is. Anything else — an error object sent with status 200, a
- * second key, `null`, a string — throws a `MudabParseError` naming what came back,
- * so a server-side failure never reads as an empty result.
+ * wrapping the array. The key is not reliably the path name (e.g. `/STATION_SMALL` ->
+ * key `V_STATION_SMALL`), but it is fixed per resource: for a path in
+ * {@link WRAPPER_KEYS} only that key is accepted, for any other path any one key. A
+ * bare array is taken as is. Every row must be a JSON object.
+ *
+ * Anything else — an error envelope (`{"errors":[…]}`) or error object sent with status
+ * 200, another table's rows, a second key, `null`, a string, a row that is not an
+ * object — throws a `MudabParseError` naming what came back, so a server-side failure
+ * never reads as data or as an empty result. (The client's list methods report an error
+ * envelope as a `MudabApiError` with its messages before this runs.)
  */
 export function extractRows<T>(res: unknown, path = "the API"): T[] {
-  if (Array.isArray(res)) return res as T[];
-  if (res !== null && typeof res === "object") {
+  const key = Object.hasOwn(WRAPPER_KEYS, path) ? WRAPPER_KEYS[path] : undefined;
+  let rows: unknown;
+  if (Array.isArray(res)) rows = res;
+  else if (isRecord(res)) {
     const keys = Object.keys(res);
-    const only = keys.length === 1 ? (res as Record<string, unknown>)[keys[0] as string] : undefined;
-    if (Array.isArray(only)) return only as T[];
+    const only = keys.length === 1 ? (keys[0] as string) : undefined;
+    if (only !== undefined && (key === undefined || only === key)) rows = res[only];
   }
-  throw new MudabParseError(
-    `Unexpected response shape from ${path}: expected a JSON object wrapping one row array, ` +
-      `got ${describeShape(res)}.`,
-  );
+  const expected = `expected a JSON object wrapping one row array${key === undefined ? "" : ` under "${key}"`}`;
+  if (!Array.isArray(rows)) {
+    throw new MudabParseError(`Unexpected response shape from ${path}: ${expected}, got ${describeShape(res)}.`);
+  }
+  const bad = rows.findIndex((row) => !isRecord(row));
+  if (bad >= 0) {
+    const row = rows[bad];
+    const what = row === null ? "null" : Array.isArray(row) ? "an array" : `a ${typeof row}`;
+    throw new MudabParseError(
+      `Unexpected response shape from ${path}: ${expected} of objects, got ${what} as row ${bad}.`,
+    );
+  }
+  return rows as T[];
 }
 
 /**
@@ -226,6 +293,18 @@ export class MudabClient {
   private async filterList<T>(resource: string, req: ListRequest = {}): Promise<T[]> {
     const body = normalizeRange(req);
     const res = await this.engine.postJson<unknown>(resource, body);
+    // An error envelope delivered with a 2xx status is the server's failure, with its
+    // own messages: report it as such (exit 1), never as rows or as "no data".
+    const errors = reportedErrors(res);
+    if (errors !== undefined) {
+      throw new MudabApiError({
+        status: 200,
+        url: this.engine.buildUrl(resource),
+        method: "POST",
+        body: this.engine.scrub(JSON.stringify(res)),
+        detail: `the server answered with an error instead of rows: ${errors}`,
+      });
+    }
     return extractRows<T>(res, resource);
   }
 

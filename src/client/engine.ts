@@ -315,7 +315,7 @@ export class RequestEngine {
    * `text` without the base URL's credentials: server text (an error body that echoes the
    * request URL) and transport text (fetch's "Failed to fetch <url>") can carry them.
    */
-  private scrub(text: string): string {
+  scrub(text: string): string {
     return this.#credentials.length === 0 ? text : redactCredentials(text, this.#credentials);
   }
 

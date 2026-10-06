@@ -87,7 +87,7 @@ export interface LibOutcome {
 export async function parity(
   argv: string[],
   call: (transport: Transport) => unknown,
-  responder: (req: HttpRequest) => HttpResponse | Promise<HttpResponse> = () => jsonResponse({ R: [] }),
+  responder: (req: HttpRequest) => HttpResponse | Promise<HttpResponse> = () => jsonResponse([]),
 ): Promise<{ cli: CliOutcome; lib: LibOutcome }> {
   const cliTransport = makeMockTransport(responder);
   const out: string[] = [];

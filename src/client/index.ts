@@ -3,6 +3,8 @@
 export {
   MudabClient,
   extractRows,
+  reportedErrors,
+  WRAPPER_KEYS,
   normalizeRange,
   DEFAULT_PAGE_SIZE,
   MAX_RANGE_END,
