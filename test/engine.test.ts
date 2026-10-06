@@ -353,3 +353,19 @@ test("a transport response without a status is a MudabNetworkError, never succes
   });
   await assert.rejects(e.postJson("/STATION_SMALL", {}), MudabNetworkError);
 });
+
+test("postJson decodes by the declared charset, drops a BOM, and rejects an unknown charset", async () => {
+  const text = "Säure KÖRKWITZ µg/l";
+  for (const [charset, encoding] of [["iso-8859-1", "latin1"], ["utf-8", "utf8"]] as const) {
+    const mt = makeMockTransport(() =>
+      rawResponse(Buffer.from(JSON.stringify([text]), encoding), `application/json; charset=${charset}`),
+    );
+    assert.deepEqual(await new RequestEngine({ transport: mt.transport }).postJson("/x", {}), [text], charset);
+  }
+  const bom = makeMockTransport(() =>
+    rawResponse(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from("[]")]), "application/json"),
+  );
+  assert.deepEqual(await new RequestEngine({ transport: bom.transport }).postJson("/x", {}), []);
+  const unknown = makeMockTransport(() => rawResponse("[]", "application/json; charset=x-bogus"));
+  await assert.rejects(new RequestEngine({ transport: unknown.transport }).postJson("/x", {}), MudabParseError);
+});

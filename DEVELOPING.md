@@ -116,6 +116,10 @@ the CLI adds a hint pointing at the canonical base URL.
   non-HTTP status, no headers, another body type) or anything thrown into a
   `MudabNetworkError`. The size-limit message names `maxResponseBytes` and
   `--max-response-bytes`.
+- **Bodies are decoded by their declared charset** (`decodeBody` in `engine.ts`):
+  `TextDecoder` with the Content-Type's `charset` (UTF-8 when none is named; the live
+  API declares `application/json;charset=UTF-8`), a leading byte order mark dropped. An
+  unknown charset label is a `MudabParseError`.
 - **Library input is checked before any request** (`MudabValidationError`): the numeric
   engine options (`timeoutMs` 0..2³¹−1, `maxRetries` 0..`MAX_RETRIES` = 10 — shared with
   `--max-retries` —, `retryDelayMs` 0..30 000, `maxResponseBytes` 0..2⁵³−1), the

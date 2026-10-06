@@ -5,6 +5,7 @@
 // MUDAB is POST-only with a JSON body (the FilterRequest); every parameter travels
 // in the body, so there is no query-string builder. There is no authentication.
 
+import { TextDecoder } from "node:util";
 import {
   MAX_TIMEOUT_MS,
   nodeHttpTransport,
@@ -483,7 +484,7 @@ export class RequestEngine {
   async postJson<T>(path: string, payload: unknown): Promise<T> {
     const body = Buffer.from(JSON.stringify(payload ?? {}), "utf8");
     const res = await this.request("POST", path, { accept: "application/json", body });
-    const text = res.data.toString("utf8");
+    const text = decodeBody(res.data, res.contentType, path);
     if (res.status === 204 || text.trim().length === 0) {
       throw new MudabParseError(`Empty response body from ${path}`);
     }
@@ -532,6 +533,25 @@ export class RequestEngine {
       status >= 300 && status < 400 && locationHeader ? redirectTarget(url, locationHeader) : undefined;
     return new MudabApiError({ status, url, method, body: text, detail, location, retryAfterMs });
   }
+}
+
+/**
+ * Decode a response body by the charset its Content-Type names (UTF-8 when it names
+ * none; the live API declares `application/json;charset=UTF-8`). TextDecoder drops a
+ * leading byte order mark, which Buffer#toString keeps and JSON.parse then rejects, so
+ * a BOM added by a proxy cannot turn a valid answer into a parse error; a Latin-1 body
+ * declared as such keeps its umlauts and `µ` instead of turning them into U+FFFD. An
+ * unknown charset label is a MudabParseError.
+ */
+function decodeBody(body: Buffer, contentType: string, path: string): string {
+  const charset = /;\s*charset\s*=\s*"?([^";\s]+)"?/i.exec(contentType)?.[1] ?? "utf-8";
+  let decoder: TextDecoder;
+  try {
+    decoder = new TextDecoder(charset);
+  } catch {
+    throw new MudabParseError(`Unsupported response charset "${sanitizeServerText(charset).slice(0, 100)}" from ${path}.`);
+  }
+  return decoder.decode(body);
 }
 
 /**
