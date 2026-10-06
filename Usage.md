@@ -67,9 +67,10 @@ mudab parameters --compartment wasser --all --compact \
 mudab measurements --from 0 --count 5 --compact
 mudab measurements --all --compact | jq '[.[] | select(.STATNAME_ST=="OMMVZBA15")] | length'
 
-# Phosphorus river loads for Mecklenburg (LAND_CD "MV")
+# Phosphorus river loads for Mecklenburg (LAND_CD "MV"); MON_TYPE keeps out the
+# treatment plants (MUNCP_FL_LD) and unmonitored areas, which are PLC rows too
 mudab plc-measurements --all --compact \
-  | jq '[.[] | select(.NAME=="Ptot" and .LAND_CD=="MV") | {STATION_NAME, PERIOD_NAME, VALUE, VAL_UNIT}]'
+  | jq '[.[] | select(.NAME=="Ptot" and .LAND_CD=="MV" and .MON_TYPE=="MON_RIVER_LOAD") | {STATION_NAME, PERIOD_NAME, VALUE, VAL_UNIT}]'
 ```
 
 ## Exit codes
