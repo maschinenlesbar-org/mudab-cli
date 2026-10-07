@@ -17,7 +17,7 @@ generic blueprint.**
 npm install
 npm run build       # tsc -> dist/
 npm run typecheck   # tsc --noEmit
-npm test            # pretest builds, then `node --test dist/test/*.test.js`
+npm test            # pretest builds, then `node --test --test-timeout=5000 dist/test/*.test.js`
 npm start -- --help # run the built CLI
 ```
 
