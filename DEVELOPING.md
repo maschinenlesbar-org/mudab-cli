@@ -178,11 +178,14 @@ the CLI adds a hint pointing at the canonical base URL.
   failure: `MudabNetworkError` is kept for the default transport's per-hop scheme
   check. Userinfo is kept
   for the request and redacted (`redactUrl`) in every error message.
-- **No credential in the CLI's output:** `run.ts` (`withRedactedOutput`) takes the exact
+- **No credential in the CLI's output:** `run.ts` (`redactionFor`, `withRedactedOutput`) takes the exact
   userinfo of every argument (`credentialsIn`, exported) and replaces it with `***` in
   everything it prints — commander's usage errors, which echo a rejected `--base-url`
   value, and its other messages — so a password with spaces, quotes, `#`, `?` or `/` is
-  caught as well as an ordinary one. `redactUrl` (exported) falls back to the same
+  caught as well as an ordinary one. The log replaces them in each record's *message*,
+  before the record is cut and escaped, and writes it to the raw stderr: the frame (time,
+  level, topic) is never touched, and a password with DEL, C1 or bidi characters is matched
+  in its raw form. `redactUrl` (exported) falls back to the same
   text-based cut for a value that doesn't parse as a URL.
 - **No credential in a logged client or error:** the engine keeps the base URL in a real
   `#private` field (so `console.log(client)`, `util.inspect` and `JSON.stringify` never
@@ -230,8 +233,9 @@ commander's messages, unexpected errors), `api` (the API's answers: HTTP errors 
 `--base-url` redirect hint) and `http` (the connection: network errors, the size-cap hint,
 the cleartext warning). Code logs through `logOf(deps)` and never writes diagnostics with
 `io.err` directly. `run()` builds the logger from argv before commander parses it, so
-commander's own usage errors are records too, and on top of the redacted `io.err`, so a
-secret is kept out of the log in either format. `CliDeps.now` makes the timestamps
+commander's own usage errors are records too, and with the run's redaction
+(`withRedactedOutput`), which replaces a secret in the message only, before it is escaped:
+the frame is never touched, and a secret is kept out of the log in either format. `CliDeps.now` makes the timestamps
 testable. stdout carries data only. Conformance test P23 checks all of this, and its body
 is shared across the *-cli repos. Two lines stay plain, outside `run()`: the bin shim's
 `Output error: …` (`handleOutputErrors`, stdout failing) and its last-resort
