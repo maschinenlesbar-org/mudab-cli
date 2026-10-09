@@ -239,8 +239,11 @@ characters, exported) is cut at a code point and ends in `… (N more characters
 commander's messages, unexpected errors), `api` (the API's answers: HTTP errors and the
 `--base-url` redirect hint) and `http` (the connection: network errors, the size-cap hint,
 the cleartext warning). Code logs through `logOf(deps)` and never writes diagnostics with
-`io.err` directly. `run()` builds the logger from argv before commander parses it, so
-commander's own usage errors are records too: its `error: …` an ERROR of `cli` (a
+`io.err` directly. `run()` builds the logger from argv before commander parses it (`logFormatFromArgv`,
+used only for the records of a parse error: it takes the last `--log-format`, as commander
+does, and skips the value of the program's own value options, as commander does; a
+`preAction` hook then sets the format commander parsed, so `--user-agent
+--log-format=jsonl` logs text), so commander's own usage errors are records too: its `error: …` an ERROR of `cli` (a
 `(Did you mean …?)` line joined to it), the help it shows after one an INFO record per
 line, and a run with global options but no command (`mudab --compact`), or `help` for an
 unknown command, an ERROR "missing command: `mudab <subcommand>`" before that help, so

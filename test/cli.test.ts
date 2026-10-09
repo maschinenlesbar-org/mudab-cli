@@ -320,3 +320,32 @@ test("the help after a usage error is one INFO record per line; a suggestion is 
   assert.equal(await run(["stationz"], typo.deps), 2);
   assert.equal(untimed(typo.err[0] ?? ""), "ERROR [mudab.cli] unknown command 'stationz' (Did you mean stations?)");
 });
+
+test("a parse error is logged in the format commander would have parsed (L6)", async () => {
+  const isJsonl = (line: string): boolean => line.startsWith("{");
+  const cases: [string[], boolean][] = [
+    // The options are not once(): commander keeps the last --log-format.
+    [["--log-format", "jsonl", "--log-format", "text", "stations", "--frm"], false],
+    [["--log-format", "text", "--log-format", "jsonl", "stations", "--frm"], true],
+    // --log-format is --user-agent's value, so `jsonl` is an unknown command, logged in text.
+    [["--user-agent", "--log-format", "jsonl", "stations"], false],
+    // commander takes the program's --log-format out first; --count is left without its value.
+    [["stations", "--count", "--log-format", "jsonl"], true],
+  ];
+  for (const [argv, jsonl] of cases) {
+    const cli = makeCli(() => jsonResponse(fx.stations));
+    assert.equal(await run(argv, cli.deps), 2, argv.join(" "));
+    assert.ok(cli.err.length > 0 && cli.err.every((line) => isJsonl(line) === jsonl), `${argv.join(" ")}:\n${cli.err.join("\n")}`);
+  }
+});
+
+test("the log format is the one commander parsed, not what an option's value looks like (L6)", async () => {
+  // commander takes "--" as the User-Agent and then parses --log-format jsonl.
+  const cli = makeCli(() => jsonResponse({ message: "boom" }, 500));
+  assert.notEqual(await run(["--user-agent", "--", "--log-format", "jsonl", "stations"], cli.deps), 0);
+  assert.ok(cli.err.length > 0 && cli.err.every((line) => line.startsWith("{")), cli.err.join("\n"));
+  // commander takes "--log-format=jsonl" as the User-Agent: the log stays text.
+  const ua = makeCli(() => jsonResponse({ message: "boom" }, 500));
+  assert.notEqual(await run(["--user-agent", "--log-format=jsonl", "stations"], ua.deps), 0);
+  assert.ok(ua.err.length > 0 && ua.err.every((line) => !line.startsWith("{")), ua.err.join("\n"));
+});
