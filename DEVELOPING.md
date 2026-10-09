@@ -94,7 +94,7 @@ the CLI adds a hint pointing at the canonical base URL.
 - `io.test.ts` — `handleOutputErrors` on fake streams: a stdout write error is an ERROR
   record of `mudab.output` (the pipe cases are P7's).
 - `log.test.ts` — the record helpers of `src/cli/log.ts` on their own
-  (`escapeForRecord`, `formatLogRecord`); the CLI-level checks are P23's.
+  (`escapeForRecord`, `formatLogRecord`, `installWarningLog`); the CLI-level checks are P23's.
 - `conformance-p*.test.ts` — the workspace's shared conformance checks from the
   2026-10-05 review (P1 credential redaction in CLI output, P2 in library objects, P4 base-URL
   validation, P5 the transport contract, P6 retries, P7 pipes, P8/P9/P13 charset, 2xx
@@ -247,7 +247,10 @@ the cleartext warning) and `output` (a failed write to stdout). A failed write t
 other than a closed pipe (`handleOutputErrors`, in the bin shim, outside `run()`) is an
 ERROR record of `mudab.output` (`Could not write to stdout: …`), and the shim's
 last-resort `Unexpected error: …` an ERROR of `mudab.cli`, both in the format argv asks
-for and redacted like the run's log (`processLogger`). Code logs through `logOf(deps)` and never writes diagnostics with
+for and redacted like the run's log (`processLogger`), and so are Node's own process
+warnings (`NODE_TLS_REJECT_UNAUTHORIZED=0`), WARN records of `mudab.cli`: the shim installs
+`installWarningLog`, which removes Node's default `warning` listener and logs
+`(node) <name>: <message>`. Code logs through `logOf(deps)` and never writes diagnostics with
 `io.err` directly. `run()` builds the logger from argv before commander parses it (`logFormatFromArgv`,
 used only for the records of a parse error: it takes the last `--log-format`, as commander
 does, and skips the value of the program's own value options, as commander does; a
