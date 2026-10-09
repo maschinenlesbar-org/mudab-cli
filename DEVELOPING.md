@@ -190,7 +190,11 @@ the CLI adds a hint pointing at the canonical base URL.
 - **No credential in a logged client or error:** the engine keeps the base URL in a real
   `#private` field (so `console.log(client)`, `util.inspect` and `JSON.stringify` never
   show it), and scrubs its userinfo (raw and percent-decoded) from error bodies, details,
-  transport error text and the `cause` chain. Whatever a custom transport throws reaches
+  transport error text and the `cause` chain — and with it the forms a server echoes it
+  back in (`echoedCredentialForms`, exported): the `Authorization: Basic` value, the decoded
+  `user:password`, and the password alone from 4 characters on (`redactSecrets`, exported).
+  The CLI replaces the Basic value and the pair on stdout and stderr, the bare password on
+  stderr only (on stdout a short password may well occur in the data). Whatever a custom transport throws reaches
   the caller as a `MudabNetworkError` (the original, scrubbed, as `cause`).
 - **Scaffold origin:** this repo was scaffolded from `entgeltatlas-cli`; the API-key /
   X-API-Key machinery was stripped because MUDAB needs no auth.

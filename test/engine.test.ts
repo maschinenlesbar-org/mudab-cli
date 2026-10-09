@@ -440,6 +440,23 @@ test("a transport's error text and a redirect target are cut in the message; loc
   assert.equal(moved.location, target);
 });
 
+test("credentials a server echoes are scrubbed from the error: Basic, user:password, password (L13)", async () => {
+  // Node's transport sends the pair UTF-8 encoded, so that is the form a server echoes.
+  const basic = Buffer.from("alice:pä ss-pw", "utf8").toString("base64");
+  const body = JSON.stringify({ message: `no: Basic ${basic} / alice:pä ss-pw / pä ss-pw` });
+  const engine = new RequestEngine({
+    baseUrl: "https://alice:p%C3%A4%20ss-pw@mirror.example",
+    maxRetries: 0,
+    transport: async () => ({ status: 401, headers: { "content-type": "application/json" }, body: Buffer.from(body) }),
+  });
+  await assert.rejects(engine.postJson("/x", {}), (err: unknown) => {
+    assert.ok(err instanceof MudabApiError);
+    for (const form of [basic, "alice:pä ss-pw", "pä ss-pw"]) assert.ok(!err.message.includes(form), err.message);
+    assert.match(err.message, /no: Basic \*\*\* \/ \*\*\* \/ \*\*\*/);
+    return true;
+  });
+});
+
 test("cleartextProblem: exact wording, host with port, loopback range, never the secret", () => {
   assert.equal(cleartextProblem("http://mirror.example:8080/api"), "requests to mirror.example:8080 are sent unencrypted (http:, not https:)");
   assert.equal(
