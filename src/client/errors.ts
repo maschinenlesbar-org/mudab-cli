@@ -152,7 +152,7 @@ export class MudabApiError extends MudabError {
     if (args.status >= 300 && args.status < 400) {
       parts.push(
         args.location
-          ? `redirect to ${args.location} not followed`
+          ? `redirect to ${cutForMessage(args.location)} not followed`
           : "redirect not followed (no Location header)",
       );
     }

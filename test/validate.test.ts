@@ -104,3 +104,13 @@ test("baseUrlProblem names what is wrong, without repeating the value", () => {
   }
   assert.equal(baseUrlProblem(5 as never), "Expected a string, got 5.");
 });
+
+test("a quoted value is cut at 500 characters in a validation message", () => {
+  const long = "x".repeat(10_000);
+  for (const [name, call] of [
+    ["header name", () => new MudabClient({ defaultHeaders: { [`${long} `]: "v" } })],
+    ["base URL scheme", () => new MudabClient({ baseUrl: `${"a".repeat(10_000)}://host` })],
+  ] as const) {
+    assert.throws(call, (err) => err instanceof MudabValidationError && err.message.length < 700 && err.message.includes("…"), name);
+  }
+});

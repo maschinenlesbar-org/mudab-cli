@@ -423,6 +423,23 @@ test("server text cut to a length limit keeps every message well-formed", async 
   }
 });
 
+test("a transport's error text and a redirect target are cut in the message; location keeps the target", async () => {
+  const long = "y".repeat(10_000);
+  const thrown = new RequestEngine({ baseUrl: "https://a.test", transport: async () => { throw new Error(long); } });
+  const err = await thrown.postJson("/x", {}).catch((caught: unknown) => caught);
+  assert.ok(err instanceof MudabNetworkError);
+  assert.ok(err.message.length <= 501, String(err.message.length));
+  const target = `https://b.test/${long}`;
+  const redirect = new RequestEngine({
+    baseUrl: "https://a.test",
+    transport: async () => ({ status: 301, headers: { location: target }, body: Buffer.alloc(0) }),
+  });
+  const moved = await redirect.postJson("/x", {}).catch((caught: unknown) => caught);
+  assert.ok(moved instanceof MudabApiError);
+  assert.ok(moved.message.length < 700, String(moved.message.length));
+  assert.equal(moved.location, target);
+});
+
 test("cleartextProblem: exact wording, host with port, loopback range, never the secret", () => {
   assert.equal(cleartextProblem("http://mirror.example:8080/api"), "requests to mirror.example:8080 are sent unencrypted (http:, not https:)");
   assert.equal(

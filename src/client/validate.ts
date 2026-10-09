@@ -4,7 +4,7 @@
 // any request; the CLI's commander parsers call the same function and turn its reason
 // into a usage error, so one input gets one outcome on both sides.
 
-import { MudabValidationError } from "./errors.js";
+import { MudabValidationError, cutForMessage } from "./errors.js";
 
 /** Why `value` is invalid (for example `"Expected a non-empty value."`), or undefined when it is valid. */
 export type Problem<T = string> = (value: T) => string | undefined;
@@ -23,7 +23,7 @@ export function assertValid<T>(name: string, value: T, problem: Problem<T>): T {
 
 /** A value as it appears in a validation message: strings quoted, the rest as is. */
 function show(value: unknown): string {
-  return typeof value === "string" ? JSON.stringify(value) : String(value);
+  return cutForMessage(typeof value === "string" ? JSON.stringify(value) : String(value));
 }
 
 /**
@@ -80,7 +80,7 @@ export const baseUrlProblem: Problem<string> = (value) => {
     return "Expected an absolute http(s) URL.";
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    return `Unsupported scheme "${url.protocol}". Expected an http(s) URL.`;
+    return `Unsupported scheme "${cutForMessage(url.protocol)}". Expected an http(s) URL.`;
   }
   if (/[?#]/.test(value)) return "A base URL cannot have a query (?) or fragment (#).";
   if (value !== value.trim()) return "A base URL cannot have surrounding whitespace.";

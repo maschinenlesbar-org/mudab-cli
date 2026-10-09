@@ -149,7 +149,9 @@ the CLI adds a hint pointing at the canonical base URL.
   `rnage`) is rejected before any request instead of being ignored. The client options
   must be an object (`null` is none), `transport` and `sleep` functions, `defaultHeaders`
   an object. Echoed values and server text are cut at 500 characters (`cutForMessage`,
-  `MAX_MESSAGE_VALUE_LENGTH`, exported); every cut is made by `cutText` (exported), which never
+  `MAX_MESSAGE_VALUE_LENGTH`, exported), and so is every other value an own message quotes
+  (a transport's error text, a redirect target — `location` keeps it whole —, a header name,
+  a base URL's scheme), so `err.message` stays bounded for a library caller; every cut is made by `cutText` (exported), which never
   splits a surrogate pair, so a message is well-formed; a string option value is quoted. A body that is
   not JSON names the parser's reason, the content type, the size and how the body starts
   (an HTML page is called one); a body above Node's longest string (~512 MiB) is a
@@ -222,7 +224,8 @@ every other C0 control but TAB, DEL and C1 as `\u00XX`, and U+2028, U+2029 and t
 controls as `\uXXXX`, so no text that reaches a record, by whatever path, can split it,
 forge another one or steer the terminal. Before that a lone surrogate (half a
 character, which jq rejects, stopping the whole stream) becomes U+FFFD (`toWellFormed`,
-exported from `errors.ts`). The areas are `cli` (usage errors and the `--from`/`--count` range hint,
+exported from `errors.ts`), and a message longer than `MAX_RECORD_MESSAGE` (4000
+characters, exported) is cut at a code point and ends in `… (N more characters)`. The areas are `cli` (usage errors and the `--from`/`--count` range hint,
 commander's messages, unexpected errors), `api` (the API's answers: HTTP errors and the
 `--base-url` redirect hint) and `http` (the connection: network errors, the size-cap hint,
 the cleartext warning). Code logs through `logOf(deps)` and never writes diagnostics with

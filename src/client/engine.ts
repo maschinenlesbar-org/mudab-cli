@@ -433,7 +433,7 @@ export class RequestEngine {
   private transportError(cause: unknown): MudabError {
     if (cause instanceof MudabError && !(cause instanceof MudabNetworkError)) return cause;
     const reason = cause instanceof Error ? cause.message : String(cause);
-    const message = sanitizeServerText(this.scrub(reason));
+    const message = cutForMessage(sanitizeServerText(this.scrub(reason)));
     const scrubbed = this.scrubCause(cause);
     if (cause instanceof MudabNetworkError && message === cause.message && scrubbed === cause) return cause;
     return new MudabNetworkError(message, { cause: scrubbed });
