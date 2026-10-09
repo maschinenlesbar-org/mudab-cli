@@ -179,10 +179,13 @@ the CLI adds a hint pointing at the canonical base URL.
   check. Userinfo is kept
   for the request and redacted (`redactUrl`) in every error message.
 - **No credential in the CLI's output:** `run.ts` (`redactionFor`, `withRedactedOutput`) takes the exact
-  userinfo of every argument (`credentialsIn`, exported) and replaces it with `***` in
+  userinfo of every URL argument (`credentialsIn`, exported) and replaces it with `***` in
   everything it prints — commander's usage errors, which echo a rejected `--base-url`
   value, and its other messages — so a password with spaces, quotes, `#`, `?` or `/` is
-  caught as well as an ordinary one. The log replaces them in each record's *message*,
+  caught as well as an ordinary one. Only a value that starts with a scheme counts (a bare
+  `a:b@c` is a User-Agent or a typed value as often as a credential), except as the
+  `--base-url` value, where a `user:password@host` typed without its scheme is still a
+  credential. The log replaces them in each record's *message*,
   before the record is cut and escaped, and writes it to the raw stderr: the frame (time,
   level, topic) is never touched, and a password with DEL, C1 or bidi characters is matched
   in its raw form. `redactUrl` (exported) falls back to the same

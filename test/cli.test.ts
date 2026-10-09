@@ -4,7 +4,7 @@ import { run } from "../src/cli/run.js";
 import { MudabClient } from "../src/client/client.js";
 import type { CliDeps } from "../src/cli/io.js";
 import { renderJson } from "../src/cli/shared.js";
-import { MudabError } from "../src/client/errors.js";
+import { MudabError, credentialsIn } from "../src/client/errors.js";
 import type { HttpRequest, HttpResponse } from "../src/client/http.js";
 import { makeMockTransport, jsonResponse, jsonBodyOf, rawResponse, untimed } from "./helpers.js";
 import * as fx from "./fixtures.js";
@@ -266,4 +266,19 @@ test("an output too large for one string is reported as such, not as nesting", (
     () => renderJson(deps, { compact: true }, huge),
     (err) => err instanceof MudabError && /too large to build as one string .*; page it with --from\/--count\.$/.test(err.message),
   );
+});
+
+test("an a:b@c argument (a User-Agent, a typed value) is neither a credential in the log nor rewritten in the JSON on stdout (L14)", async () => {
+  const cli = makeCli(() => jsonResponse({ V_STATION_SMALL: [{ note: "run:2026-10-09@x" }] }));
+  assert.equal(await run(["--user-agent", "run:2026-10-09@x", "stations"], cli.deps), 0);
+  assert.match(cli.out.join("\n"), /"note": "run:2026-10-09@x"/);
+  const typed = makeCli(() => jsonResponse(fx.stations));
+  assert.equal(await run(["--timeout", "run:2026-10-09@x", "stations"], typed.deps), 2);
+  assert.ok(typed.err.some((line) => line.includes("'run:2026-10-09@x'")), typed.err.join("\n"));
+  assert.deepEqual(credentialsIn("run:2026-10-09@x"), []);
+  assert.deepEqual(credentialsIn("https://alice:pw@host"), ["alice:pw"]);
+  // A base URL typed without its scheme is still read as one: its password is never echoed.
+  const bare = makeCli(() => jsonResponse(fx.stations));
+  assert.equal(await run(["--base-url", "alice:hunter2-pw@mirror.example", "stations"], bare.deps), 2);
+  assert.ok(!bare.err.join("\n").includes("hunter2-pw"), bare.err.join("\n"));
 });
