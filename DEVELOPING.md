@@ -91,8 +91,9 @@ the CLI adds a hint pointing at the canonical base URL.
   and the `parity()` helper (`test/helpers.ts`), which sends one input through `run()`
   and through the library, each on a recording mock transport, so a test can assert
   both give the same outcome.
-- `io.test.ts` — `handleOutputErrors` on fake streams: a stdout write error is an ERROR
-  record of `mudab.output` (the pipe cases are P7's).
+- `io.test.ts` — `handleOutputErrors` and `stderrAfterStdout` on fake streams: a stdout
+  write error is an ERROR record of `mudab.output` (the pipe cases are P7's), and a record is
+  held behind stdout's backlog.
 - `log.test.ts` — the record helpers of `src/cli/log.ts` on their own
   (`escapeForRecord`, `formatLogRecord`, `installWarningLog`); the CLI-level checks are P23's.
 - `conformance-p*.test.ts` — the workspace's shared conformance checks from the
@@ -250,7 +251,9 @@ last-resort `Unexpected error: …` an ERROR of `mudab.cli`, both in the format 
 for and redacted like the run's log (`processLogger`), and so are Node's own process
 warnings (`NODE_TLS_REJECT_UNAUTHORIZED=0`), WARN records of `mudab.cli`: the shim installs
 `installWarningLog`, which removes Node's default `warning` listener and logs
-`(node) <name>: <message>`. Code logs through `logOf(deps)` and never writes diagnostics with
+`(node) <name>: <message>`. In `defaultDeps` a record waits for stdout
+(`stderrAfterStdout`): it is held while stdout has a backlog and written, in order, once it
+is gone, so with `2>&1 |` and a slow reader it never lands inside the data. Code logs through `logOf(deps)` and never writes diagnostics with
 `io.err` directly. `run()` builds the logger from argv before commander parses it (`logFormatFromArgv`,
 used only for the records of a parse error: it takes the last `--log-format`, as commander
 does, and skips the value of the program's own value options, as commander does; a
