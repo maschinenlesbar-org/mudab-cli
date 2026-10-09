@@ -7,7 +7,7 @@
 //
 // The text form follows log4j's pattern (`%d %-5p [%c] %m`), with the time in UTC
 // ISO 8601. The topic is a dotted logger name: the program, then the area the record
-// comes from (`mudab.cli`, `mudab.api`, `mudab.http`). stdout carries data
+// comes from (`mudab.cli`, `mudab.api`, `mudab.http`, `mudab.output`). stdout carries data
 // only and is not touched; neither is `--help`/`--version`.
 
 import { cutText, toWellFormed } from "../client/errors.js";
