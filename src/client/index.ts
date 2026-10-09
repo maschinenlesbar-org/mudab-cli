@@ -20,6 +20,7 @@ export {
   assertHeaderValue,
   cleartextProblem,
   parseRetryAfter,
+  quoteServerText,
   serverTextForMessage,
 } from "./engine.js";
 export type { EngineOptions, RawResponse } from "./engine.js";

@@ -155,7 +155,10 @@ the CLI adds a hint pointing at the canonical base URL.
   `MAX_MESSAGE_VALUE_LENGTH`, exported), and so is every other value an own message quotes
   (a transport's error text, a redirect target — `location` keeps it whole —, a header name,
   a base URL's scheme), so `err.message` stays bounded for a library caller; every cut is made by `cutText` (exported), which never
-  splits a surrogate pair, so a message is well-formed; a string option value is quoted. A body that is
+  splits a surrogate pair, so a message is well-formed; server text an own message
+  quotes as a JSON string (a wrapper key, a row's field name, the start of a body) goes
+  through `quoteServerText` (exported), which also escapes DEL, C1, U+2028/U+2029 and the bidi
+  controls that `JSON.stringify` leaves raw; a string option value is quoted. A body that is
   not JSON names the parser's reason (its line breaks folded, so the message is one line), the content type, the size and how the body starts
   (an HTML page is called one); a body above Node's longest string (~512 MiB) is a
   `MudabParseError` saying so, whatever `maxResponseBytes` allows.

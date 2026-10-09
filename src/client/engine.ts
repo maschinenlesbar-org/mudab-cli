@@ -188,6 +188,22 @@ export function serverTextForMessage(text: string, max = MAX_DETAIL_LENGTH): str
   return clean.length > max ? `${cutText(clean, max)}…` : clean;
 }
 
+/**
+ * Server text quoted as a JSON string in one of the client's own messages — a wrapper key,
+ * a row's field name, the start of a body that is not JSON: `JSON.stringify`, which
+ * escapes C0, and then DEL, C1 (U+009B is the 8-bit CSI), U+2028, U+2029 and the bidi
+ * controls, which it leaves raw, escaped as `\uXXXX` too. Unlike `serverTextForMessage`,
+ * which drops them, the quote keeps every character visible. The caller cuts.
+ */
+export function quoteServerText(text: string): string {
+  let out = "";
+  for (const ch of JSON.stringify(text)) {
+    const n = ch.codePointAt(0) ?? 0;
+    out += (n >= 0x7f && n <= 0x9f) || n === 0x2028 || n === 0x2029 || isBidiControl(n) ? `\\u${n.toString(16).padStart(4, "0")}` : ch;
+  }
+  return out;
+}
+
 /** Why `value` is not a usable HttpResponse, or undefined when it is. */
 function responseProblem(value: unknown): string | undefined {
   if (typeof value !== "object" || value === null) return "not an object";
@@ -611,7 +627,7 @@ export class RequestEngine {
       sanitizeServerText(
         this.scrub(
           `Failed to parse JSON response from ${path}: ${reason}. The reply (${contentType}, ` +
-            `${res.data.byteLength} bytes) starts with ${JSON.stringify(start)}.${kind}`,
+            `${res.data.byteLength} bytes) starts with ${quoteServerText(start)}.${kind}`,
         ),
       ),
     );

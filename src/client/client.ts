@@ -15,7 +15,7 @@
 //   const water = await c.parameters({ range: { from: 0, count: 100 } }, "wasser");
 //   const cw = (await c.parameters({ all: true })).filter((p) => p.COMPT_DS === "CW"); // whole table
 
-import { RequestEngine, cleanDetail, serverTextForMessage, type EngineOptions } from "./engine.js";
+import { RequestEngine, cleanDetail, quoteServerText, serverTextForMessage, type EngineOptions } from "./engine.js";
 import { MudabApiError, MudabParseError, MudabValidationError, cutForMessage, cutText } from "./errors.js";
 import type {
   Compartment,
@@ -143,7 +143,7 @@ function describeShape(value: unknown): string {
   if (keys.length === 0) return "an empty object";
   const shown = keys
     .slice(0, 5)
-    .map((k) => JSON.stringify(k.length > 40 ? `${cutText(k, 40)}…` : k))
+    .map((k) => quoteServerText(k.length > 40 ? `${cutText(k, 40)}…` : k))
     .join(", ");
   let text = `an object with the key${keys.length === 1 ? "" : "s"} ${shown}${keys.length > 5 ? ", …" : ""}`;
   // An error object delivered with status 200 (e.g. {"message": "ORA-00942: ..."}):
@@ -152,7 +152,7 @@ function describeShape(value: unknown): string {
   for (const key of ["detail", "message", "error"]) {
     const raw = record[key];
     if (typeof raw === "string" && raw.trim() !== "") {
-      text += ` (${key}: ${JSON.stringify(cleanDetail(raw))})`;
+      text += ` (${key}: ${quoteServerText(cleanDetail(raw))})`;
       break;
     }
   }
@@ -200,7 +200,7 @@ export function extractRows<T>(res: unknown, path = "the API"): T[] {
     for (const [field, value] of Object.entries(row)) {
       if (typeof value === "number" && !Number.isFinite(value)) {
         throw new MudabParseError(
-          `Unexpected value from ${path}: row ${i} field ${cutForMessage(JSON.stringify(field))} is a ` +
+          `Unexpected value from ${path}: row ${i} field ${cutForMessage(quoteServerText(field))} is a ` +
             "number beyond the range of a double (it reads as Infinity, and would print as null, " +
             '"no value").',
         );

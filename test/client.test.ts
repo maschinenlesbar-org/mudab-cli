@@ -183,6 +183,27 @@ test("a 200 reply of any other shape is a MudabParseError naming what came back"
   }
 });
 
+test("server keys and field names are quoted with DEL, C1, U+2028 and bidi controls escaped (B01-3)", async () => {
+  // JSON.stringify escapes C0 but leaves DEL, C1 (U+009B is the 8-bit CSI) and the bidi
+  // controls raw: a wrapper key or a row's field name put them into the record as they came.
+  const RAW = /[\u007f-\u009f\u2028\u2029\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
+  const cases: [string, (c: MudabClient) => Promise<unknown>, RegExp][] = [
+    ['{"k":1,"\u009b2J\u202ekey\u007f":2}', (c) => c.stations(), /got an object with the keys "k", "\\u009b2J\\u202ekey\\u007f"\.$/],
+    ['{"message":"ORA\u202e-1\u2028x"}', (c) => c.stations(), /\(message: "ORA\\u202e-1\\u2028x"\)\.$/],
+    ['{"MV_PARAMETER_WASSER":[{"x\u009b31m\u202eabc\u2066":1e400}]}', (c) => c.parameters({}, "wasser"), /row 0 field "x\\u009b31m\\u202eabc\\u2066" is a number beyond/],
+    ["<\u2028\u202ehtml>", (c) => c.stations(), /starts with "<\\u2028\\u202ehtml>"\./],
+  ];
+  for (const [body, call, message] of cases) {
+    const mt = makeMockTransport(() => rawResponse(body, "application/json"));
+    await assert.rejects(call(new MudabClient({ transport: mt.transport })), (err) => {
+      assert.ok(err instanceof MudabParseError, String(err));
+      assert.doesNotMatch(err.message, RAW, JSON.stringify(err.message));
+      assert.match(err.message, message);
+      return true;
+    }, body);
+  }
+});
+
 test("an empty 200 body is a MudabParseError, not an empty result", async () => {
   const mt = makeMockTransport(() => rawResponse("", "application/json"));
   const client = new MudabClient({ transport: mt.transport });
