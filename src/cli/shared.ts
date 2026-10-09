@@ -219,7 +219,8 @@ export interface ActionContext {
  * Before the client is built (so before the first request) it logs one
  * WARN record of `mudab.http` to stderr when the base URL is plain `http:` to a host
  * other than loopback (cleartextProblem). Help, version and usage errors never reach
- * an action, so they never warn.
+ * an action, so they never warn; nor does the offline `compartments`, which sends nothing
+ * and doesn't run through here.
  *
  * Commander invokes actions as (arg1, ..., argN, options, command); we slice off
  * the trailing options object and command instance to recover the positionals.

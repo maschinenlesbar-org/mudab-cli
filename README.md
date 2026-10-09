@@ -58,7 +58,7 @@ Global flags: `--base-url`, `--timeout`, `--user-agent`, `--max-retries`,
 `--max-response-bytes`, `--log-format`, `--compact`. A `--base-url` on plain `http:` to a
 host other than loopback (`localhost`, `127.0.0.0/8`, `::1`) logs one `WARN` record of
 `mudab.http`, `requests to <host> are sent unencrypted (http:, not https:)`, on stderr
-before the first request (naming the URL's credentials instead when it carries any,
+before the first request (not for the offline `compartments`, which sends none) (naming the URL's credentials instead when it carries any,
 never printing them); stdout and the exit code are unchanged. See [Usage.md](https://github.com/maschinenlesbar-org/mudab-cli/blob/main/Usage.md)
 for the full reference.
 

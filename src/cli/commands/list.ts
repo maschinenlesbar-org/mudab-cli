@@ -9,7 +9,7 @@ import { COMPARTMENT_CODES, PARAMETER_COMPARTMENTS } from "../../client/client.j
 import type { MudabClient, ParameterCompartment } from "../../client/client.js";
 import type { ListRequest } from "../../client/types.js";
 import { action, addListOptions, buildFilterRequest, renderJson } from "../shared.js";
-import type { ListOptions } from "../shared.js";
+import type { GlobalOptions, ListOptions } from "../shared.js";
 
 type ListFn = (client: MudabClient, req: ListRequest) => Promise<unknown>;
 
@@ -72,9 +72,9 @@ export function registerCommands(program: Command, deps: CliDeps): void {
   program
     .command("compartments")
     .description("Print the compartment (COMPT_DS) code table — works offline, no request")
-    .action(
-      action(deps, async ({ global }) => {
-        renderJson(deps, global, COMPARTMENT_CODES);
-      }),
-    );
+    // Not through action(): no client, no request, so no cleartext warning either, which
+    // would report requests "sent unencrypted" that are never sent.
+    .action((_opts: unknown, command: Command) => {
+      renderJson(deps, command.optsWithGlobals() as GlobalOptions, COMPARTMENT_CODES);
+    });
 }

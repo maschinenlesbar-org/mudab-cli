@@ -67,6 +67,22 @@ test("plc-measurements POSTs to /V_MESSWERTE_PLC", async () => {
   assert.equal(new URL(cli.mt.last().url).pathname.endsWith("/V_MESSWERTE_PLC"), true);
 });
 
+test("compartments sends nothing, so a plain http base URL gets no cleartext warning (B03-1)", async () => {
+  for (const baseUrl of ["http://u:pw@mirror.example", "http://mirror.example"]) {
+    for (const format of ["text", "jsonl"]) {
+      const cli = makeCli(() => jsonResponse({}));
+      assert.equal(await run(["--log-format", format, "--base-url", baseUrl, "compartments"], cli.deps), 0);
+      assert.equal(cli.mt.calls.length, 0);
+      assert.deepEqual(cli.err, [], `${baseUrl} ${format}`);
+      assert.equal((JSON.parse(cli.out.join("\n")) as unknown[]).length, 4);
+    }
+  }
+  // A command that sends the request still warns.
+  const listing = makeCli(() => jsonResponse(fx.stations));
+  assert.equal(await run(["--base-url", "http://mirror.example", "stations"], listing.deps), 0);
+  assert.match(untimed(listing.err[0] ?? ""), /^WARN  \[mudab\.http\] requests to mirror\.example are sent unencrypted/);
+});
+
 test("compartments works offline, needs no request, and lists the codes", async () => {
   const cli = makeCli(() => jsonResponse({}));
   const code = await run(["compartments"], cli.deps);
