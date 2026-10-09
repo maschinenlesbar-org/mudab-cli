@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { RequestEngine, assertHeaderValue, cleartextProblem, parseRetryAfter } from "../src/client/engine.js";
 import { headerNameProblem, headerValueProblem } from "../src/client/validate.js";
-import { MudabApiError, MudabNetworkError, MudabParseError, MudabValidationError, redactUrl } from "../src/client/errors.js";
+import { MudabApiError, MudabNetworkError, MudabParseError, MudabValidationError, cutText, redactUrl, toWellFormed } from "../src/client/errors.js";
+import { MudabClient } from "../src/client/client.js";
 import { makeMockTransport, jsonResponse, rawResponse, jsonBodyOf } from "./helpers.js";
 import * as fx from "./fixtures.js";
 import type { HttpResponse } from "../src/client/http.js";
@@ -386,6 +387,39 @@ test("a parse error says what came back: the parser's reason, content type, size
       (err) => err instanceof MudabParseError && message.test(err.message),
       body,
     );
+  }
+});
+
+test("toWellFormed replaces half a character and keeps whole ones", () => {
+  assert.equal(toWellFormed("a\ud83d b\ude00 \u{1f600}"), "a� b� \u{1f600}");
+});
+
+test("cutText never cuts inside a surrogate pair", () => {
+  assert.equal(cutText("a\u{1f600}b", 2), "a");
+  assert.equal(cutText("a\u{1f600}b", 3), "a\u{1f600}");
+  assert.equal(cutText("abc", 5), "abc");
+});
+
+test("server text cut to a length limit keeps every message well-formed", async () => {
+  // "a" first, so an even cut lands after the high half of an emoji; without it, an odd one.
+  for (const text of ["a" + "\u{1f600}".repeat(600), "\u{1f600}".repeat(600)]) {
+    for (const [status, body] of [
+      [500, { message: text }],
+      [500, text],
+      [200, { errors: [{ message: text }] }],
+    ] as const) {
+      const mt = makeMockTransport(() =>
+        typeof body === "string" ? rawResponse(body, "text/plain", status) : jsonResponse(body, status),
+      );
+      const err = await new MudabClient({ transport: mt.transport, maxRetries: 0 }).stations().catch((caught: unknown) => caught);
+      assert.ok(err instanceof MudabApiError, String(err));
+      assert.equal(toWellFormed(err.message), err.message, `${status} ${typeof body}`);
+      assert.match(err.message, /…$/);
+    }
+    const mt = makeMockTransport(() => rawResponse(`{"x${text}`, "application/json"));
+    const err = await new MudabClient({ transport: mt.transport }).stations().catch((caught: unknown) => caught);
+    assert.ok(err instanceof MudabParseError);
+    assert.equal(toWellFormed(err.message), err.message);
   }
 });
 

@@ -23,6 +23,7 @@ import {
   MudabValidationError,
   credentialsIn,
   cutForMessage,
+  cutText,
   redactCredentials,
   redactUrl,
 } from "./errors.js";
@@ -156,11 +157,11 @@ export function sanitizeServerText(text: string): string {
 
 /**
  * A server-provided message made safe for an error message: control characters
- * stripped and cut at MAX_DETAIL_LENGTH characters.
+ * stripped and cut at MAX_DETAIL_LENGTH characters (never inside a surrogate pair).
  */
 export function cleanDetail(raw: string): string {
   const clean = sanitizeServerText(raw);
-  return clean.length > MAX_DETAIL_LENGTH ? `${clean.slice(0, MAX_DETAIL_LENGTH)}…` : clean;
+  return clean.length > MAX_DETAIL_LENGTH ? `${cutText(clean, MAX_DETAIL_LENGTH)}…` : clean;
 }
 
 /** True for U+061C, U+200E, U+200F, U+202A–U+202E and U+2066–U+2069: the bidi controls. */
@@ -181,7 +182,7 @@ export function serverTextForMessage(text: string, max = MAX_DETAIL_LENGTH): str
     if (!isBidiControl(ch.codePointAt(0) ?? 0)) clean += ch;
   }
   clean = clean.trim();
-  return clean.length > max ? `${clean.slice(0, max)}…` : clean;
+  return clean.length > max ? `${cutText(clean, max)}…` : clean;
 }
 
 /** Why `value` is not a usable HttpResponse, or undefined when it is. */
@@ -589,7 +590,7 @@ export class RequestEngine {
     const kind = head.startsWith("<")
       ? " It looks like an HTML page (a maintenance or error page from a proxy?), not JSON."
       : "";
-    const start = head.length > 80 ? `${head.slice(0, 80)}…` : head;
+    const start = head.length > 80 ? `${cutText(head, 80)}…` : head;
     const contentType = res.contentType === "" ? "no content type" : `content type ${JSON.stringify(res.contentType)}`;
     return cutForMessage(
       sanitizeServerText(
@@ -637,7 +638,7 @@ export class RequestEngine {
       // intact, so a hostile plain-text body could still smuggle ANSI/OSC escapes.
       const snippet = sanitizeServerText(text.trim().replace(/\s+/g, " "));
       if (snippet.length > 0 && !snippet.startsWith("<")) {
-        detail = snippet.length > MAX_DETAIL_LENGTH ? `${snippet.slice(0, MAX_DETAIL_LENGTH)}…` : snippet;
+        detail = snippet.length > MAX_DETAIL_LENGTH ? `${cutText(snippet, MAX_DETAIL_LENGTH)}…` : snippet;
       }
     }
     // Redirects are not followed; name the target so the user can see where it points.
@@ -664,7 +665,7 @@ function decodeBody(body: Buffer, contentType: string, path: string): string {
   try {
     decoder = new TextDecoder(charset);
   } catch {
-    throw new MudabParseError(`Unsupported response charset "${sanitizeServerText(charset).slice(0, 100)}" from ${path}.`);
+    throw new MudabParseError(`Unsupported response charset "${cutText(sanitizeServerText(charset), 100)}" from ${path}.`);
   }
   try {
     return decoder.decode(body);

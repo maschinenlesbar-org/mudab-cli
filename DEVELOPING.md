@@ -149,7 +149,8 @@ the CLI adds a hint pointing at the canonical base URL.
   `rnage`) is rejected before any request instead of being ignored. The client options
   must be an object (`null` is none), `transport` and `sleep` functions, `defaultHeaders`
   an object. Echoed values and server text are cut at 500 characters (`cutForMessage`,
-  `MAX_MESSAGE_VALUE_LENGTH`, exported); a string option value is quoted. A body that is
+  `MAX_MESSAGE_VALUE_LENGTH`, exported); every cut is made by `cutText` (exported), which never
+  splits a surrogate pair, so a message is well-formed; a string option value is quoted. A body that is
   not JSON names the parser's reason, the content type, the size and how the body starts
   (an HTML page is called one); a body above Node's longest string (~512 MiB) is a
   `MudabParseError` saying so, whatever `maxResponseBytes` allows.
@@ -219,7 +220,9 @@ and `msg`. A record is always one line: `formatLogRecord` runs `escapeForRecord`
 the message (text) or the whole JSON object (jsonl), which writes CR and LF as `\r`/`\n`,
 every other C0 control but TAB, DEL and C1 as `\u00XX`, and U+2028, U+2029 and the bidi
 controls as `\uXXXX`, so no text that reaches a record, by whatever path, can split it,
-forge another one or steer the terminal. The areas are `cli` (usage errors and the `--from`/`--count` range hint,
+forge another one or steer the terminal. Before that a lone surrogate (half a
+character, which jq rejects, stopping the whole stream) becomes U+FFFD (`toWellFormed`,
+exported from `errors.ts`). The areas are `cli` (usage errors and the `--from`/`--count` range hint,
 commander's messages, unexpected errors), `api` (the API's answers: HTTP errors and the
 `--base-url` redirect hint) and `http` (the connection: network errors, the size-cap hint,
 the cleartext warning). Code logs through `logOf(deps)` and never writes diagnostics with

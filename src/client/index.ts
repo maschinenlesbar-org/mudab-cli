@@ -35,6 +35,8 @@ export {
   credentialsIn,
   redactCredentials,
   cutForMessage,
+  cutText,
+  toWellFormed,
   MAX_MESSAGE_VALUE_LENGTH,
 } from "./errors.js";
 export { assertValid, baseUrlProblem, headerNameProblem, headerValueProblem } from "./validate.js";

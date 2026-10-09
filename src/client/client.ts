@@ -16,7 +16,7 @@
 //   const cw = (await c.parameters({ all: true })).filter((p) => p.COMPT_DS === "CW"); // whole table
 
 import { RequestEngine, cleanDetail, serverTextForMessage, type EngineOptions } from "./engine.js";
-import { MudabApiError, MudabParseError, MudabValidationError, cutForMessage } from "./errors.js";
+import { MudabApiError, MudabParseError, MudabValidationError, cutForMessage, cutText } from "./errors.js";
 import type {
   Compartment,
   FilterRequest,
@@ -143,7 +143,7 @@ function describeShape(value: unknown): string {
   if (keys.length === 0) return "an empty object";
   const shown = keys
     .slice(0, 5)
-    .map((k) => JSON.stringify(k.length > 40 ? `${k.slice(0, 40)}…` : k))
+    .map((k) => JSON.stringify(k.length > 40 ? `${cutText(k, 40)}…` : k))
     .join(", ");
   let text = `an object with the key${keys.length === 1 ? "" : "s"} ${shown}${keys.length > 5 ? ", …" : ""}`;
   // An error object delivered with status 200 (e.g. {"message": "ORA-00942: ..."}):
