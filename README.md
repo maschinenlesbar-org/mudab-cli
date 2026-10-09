@@ -74,6 +74,7 @@ than 4000 characters is cut and ends in `… (N more characters)`:
 
 ```text
 2026-10-09T14:03:12.481Z WARN  [mudab.http] requests to mirror.test are sent unencrypted (http:, not https:)
+2026-10-09T14:03:12.700Z WARN  [mudab.http] HTTP 503 from geoportal.bafg.de: retry 1 of 2 in 200 ms
 2026-10-09T14:03:12.902Z ERROR [mudab.api] HTTP 404 for POST https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements/STATION_SMALL
 ```
 
