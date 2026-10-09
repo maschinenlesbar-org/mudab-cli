@@ -123,16 +123,19 @@ function errorText(item: unknown): string | undefined {
  * `error` key (`{"errors":[{"code":"ORA-00942","message":"…"}]}`, `{"error":["…"]}`,
  * `{"error":"…"}`) — joined, cleaned and cut (`serverTextForMessage`: on one line, without
  * control or bidi characters, at most 200 characters); `undefined` when `res` is no such
- * envelope. Taken as rows, an error list read as "no data for that station".
+ * envelope. Taken as rows, an error list read as "no data for that station". `scrub`
+ * removes credentials from the joined text first (the client passes the engine's, which
+ * knows the base URL's userinfo).
  */
-export function reportedErrors(res: unknown): string | undefined {
+export function reportedErrors(res: unknown, scrub: (text: string) => string = (text) => text): string | undefined {
   if (!isRecord(res)) return undefined;
   const key = Object.keys(res).find((k) => /^errors?$/i.test(k));
   if (key === undefined) return undefined;
   const value = res[key];
   const items = Array.isArray(value) ? value : [value];
   const texts = items.map(errorText).filter((t): t is string => t !== undefined);
-  return serverTextForMessage(texts.length > 0 ? texts.join("; ") : "no message");
+  // Scrubbed before it is cleaned and cut, so a cut can't leave part of a credential.
+  return serverTextForMessage(scrub(texts.length > 0 ? texts.join("; ") : "no message"));
 }
 
 /** Name what came back instead of the row wrapper, for the shape error. */
@@ -346,7 +349,7 @@ export class MudabClient {
     const res = await this.engine.postJson<unknown>(resource, body);
     // An error envelope delivered with a 2xx status is the server's failure, with its
     // own messages: report it as such (exit 1), never as rows or as "no data".
-    const errors = reportedErrors(res);
+    const errors = reportedErrors(res, (text) => this.engine.scrub(text));
     if (errors !== undefined) {
       throw new MudabApiError({
         status: 200,

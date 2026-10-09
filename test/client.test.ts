@@ -156,6 +156,25 @@ test("a 200 error envelope's text is quoted on one line, without control or bidi
   });
 });
 
+test("a 200 error list's message and detail never carry the base URL's credentials (B03-2)", async () => {
+  // A non-2xx detail and err.body were scrubbed; the 200 error list's detail was not.
+  for (const [body, call] of [
+    [{ error: "auth bob:p@ss w@db failed" }, (c: MudabClient) => c.plcStations()],
+    [{ errors: [{ message: "login bob:p%40ss%20w@127.0.0.1 refused" }] }, (c: MudabClient) => c.stations()],
+  ] as const) {
+    const mt = makeMockTransport(() => jsonResponse(body));
+    const client = new MudabClient({ baseUrl: "http://bob:p%40ss%20w@127.0.0.1:47811", transport: mt.transport });
+    await assert.rejects(call(client), (err) => {
+      assert.ok(err instanceof MudabApiError);
+      for (const text of [err.message, err.detail ?? "", err.body]) {
+        assert.ok(!text.includes("p@ss w") && !text.includes("p%40ss%20w"), text);
+      }
+      assert.match(err.detail ?? "", /\*\*\*@/);
+      return true;
+    }, JSON.stringify(body));
+  }
+});
+
 test("a 200 reply of any other shape is a MudabParseError naming what came back", async () => {
   const cases: [string, RegExp][] = [
     ['{"message":"ORA-00942: table or view does not exist"}', /got an object with the key "message" \(message: "ORA-00942: table or view does not exist"\)\.$/],

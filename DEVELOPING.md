@@ -198,7 +198,8 @@ the CLI adds a hint pointing at the canonical base URL.
   text-based cut for a value that doesn't parse as a URL.
 - **No credential in a logged client or error:** the engine keeps the base URL in a real
   `#private` field (so `console.log(client)`, `util.inspect` and `JSON.stringify` never
-  show it), and scrubs its userinfo (raw and percent-decoded) from error bodies, details,
+  show it), and scrubs its userinfo (raw and percent-decoded) from error bodies, details
+  (a 200 error list's included, `reportedErrors(res, scrub)`),
   transport error text and the `cause` chain — and with it the forms a server echoes it
   back in (`echoedCredentialForms`, exported): the `Authorization: Basic` value, the decoded
   `user:password`, and the password alone from 4 characters on (`redactSecrets`, exported).
