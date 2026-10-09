@@ -15,7 +15,7 @@
 //   const water = await c.parameters({ range: { from: 0, count: 100 } }, "wasser");
 //   const cw = (await c.parameters({ all: true })).filter((p) => p.COMPT_DS === "CW"); // whole table
 
-import { RequestEngine, cleanDetail, type EngineOptions } from "./engine.js";
+import { RequestEngine, cleanDetail, serverTextForMessage, type EngineOptions } from "./engine.js";
 import { MudabApiError, MudabParseError, MudabValidationError, cutForMessage } from "./errors.js";
 import type {
   Compartment,
@@ -121,8 +121,9 @@ function errorText(item: unknown): string | undefined {
 /**
  * The messages of an error envelope sent with a 2xx status — an object with an `errors` or
  * `error` key (`{"errors":[{"code":"ORA-00942","message":"…"}]}`, `{"error":["…"]}`,
- * `{"error":"…"}`) — joined, cleaned and cut; `undefined` when `res` is no such envelope.
- * Taken as rows, an error list read as "no data for that station".
+ * `{"error":"…"}`) — joined, cleaned and cut (`serverTextForMessage`: on one line, without
+ * control or bidi characters, at most 200 characters); `undefined` when `res` is no such
+ * envelope. Taken as rows, an error list read as "no data for that station".
  */
 export function reportedErrors(res: unknown): string | undefined {
   if (!isRecord(res)) return undefined;
@@ -131,7 +132,7 @@ export function reportedErrors(res: unknown): string | undefined {
   const value = res[key];
   const items = Array.isArray(value) ? value : [value];
   const texts = items.map(errorText).filter((t): t is string => t !== undefined);
-  return cleanDetail(texts.length > 0 ? texts.join("; ") : "no message");
+  return serverTextForMessage(texts.length > 0 ? texts.join("; ") : "no message");
 }
 
 /** Name what came back instead of the row wrapper, for the shape error. */

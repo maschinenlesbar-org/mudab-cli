@@ -163,6 +163,27 @@ export function cleanDetail(raw: string): string {
   return clean.length > MAX_DETAIL_LENGTH ? `${clean.slice(0, MAX_DETAIL_LENGTH)}…` : clean;
 }
 
+/** True for U+061C, U+200E, U+200F, U+202A–U+202E and U+2066–U+2069: the bidi controls. */
+function isBidiControl(n: number): boolean {
+  return n === 0x061c || n === 0x200e || n === 0x200f || (n >= 0x202a && n <= 0x202e) || (n >= 0x2066 && n <= 0x2069);
+}
+
+/**
+ * Server text that one of the client's own messages quotes — the messages of an error list
+ * sent with status 200 — made safe and short: whitespace (line breaks, U+2028/U+2029
+ * included) folded to one space, so it stays on one line; control characters
+ * (`sanitizeServerText`) and the bidi controls dropped; trimmed and cut at `max`
+ * characters (200). The error's `body` keeps the server's text as it came.
+ */
+export function serverTextForMessage(text: string, max = MAX_DETAIL_LENGTH): string {
+  let clean = "";
+  for (const ch of sanitizeServerText(text.replace(/\s+/g, " "))) {
+    if (!isBidiControl(ch.codePointAt(0) ?? 0)) clean += ch;
+  }
+  clean = clean.trim();
+  return clean.length > max ? `${clean.slice(0, max)}…` : clean;
+}
+
 /** Why `value` is not a usable HttpResponse, or undefined when it is. */
 function responseProblem(value: unknown): string | undefined {
   if (typeof value !== "object" || value === null) return "not an object";

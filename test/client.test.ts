@@ -119,6 +119,43 @@ test("a 200 error envelope is a MudabApiError with the server's messages, never 
   }
 });
 
+test("a 200 error envelope's text is quoted on one line, without control or bidi characters, and cut", async () => {
+  // 2026-10-09 B01-1: a message with a line break and a record-shaped line forged a log
+  // record through this message; ESC, C1 and U+202E reached the terminal.
+  const forged = "boom\n2026-10-09T00:00:00.000Z INFO  [mudab.api] all good, 0 rows";
+  const hostile = "a\r\nb\tc\u001b[31m d\u009b2J e\u2028f\u2029g\u202eh\u2066i\u200fj\u061ck\u007fl\u0085m";
+  for (const body of [
+    { errors: [{ code: "ORA-1", message: forged }] },
+    { errors: [{ code: `ORA-1\n${forged}` }] },
+    { error: [forged] },
+    { error: hostile },
+    { errors: [{ message: "x".repeat(1000) }] },
+  ]) {
+    const { client } = clientFor(body);
+    await assert.rejects(
+      () => client.plcMeasurements({ all: true }),
+      (err) =>
+        err instanceof MudabApiError &&
+        !/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/.test(err.message) &&
+        err.detail !== undefined &&
+        err.detail.length <= "the server answered with an error instead of rows: ".length + 201,
+      JSON.stringify(body),
+    );
+  }
+  const { client } = clientFor({ errors: [{ code: "ORA-1", message: forged }] });
+  await assert.rejects(client.stations(), (err) => {
+    assert.ok(err instanceof MudabApiError);
+    assert.equal(err.detail, `the server answered with an error instead of rows: ORA-1: boom 2026-10-09T00:00:00.000Z INFO [mudab.api] all good, 0 rows`);
+    return true;
+  });
+  const hostileClient = clientFor({ error: hostile }).client;
+  await assert.rejects(hostileClient.stations(), (err) => {
+    assert.ok(err instanceof MudabApiError);
+    assert.equal(err.detail, "the server answered with an error instead of rows: a b c[31m d2J e f ghijklm");
+    return true;
+  });
+});
+
 test("a 200 reply of any other shape is a MudabParseError naming what came back", async () => {
   const cases: [string, RegExp][] = [
     ['{"message":"ORA-00942: table or view does not exist"}', /got an object with the key "message" \(message: "ORA-00942: table or view does not exist"\)\.$/],
