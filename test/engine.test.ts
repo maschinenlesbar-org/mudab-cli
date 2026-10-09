@@ -390,8 +390,22 @@ test("a parse error says what came back: the parser's reason, content type, size
   }
 });
 
+test("a parse error is one line: the parser's reason quotes the body's line breaks folded (B01-2)", async () => {
+  // V8's reason quotes the first characters of the body raw, line breaks included: a plain
+  // maintenance page split the ERROR record over two stderr lines.
+  for (const body of ["<html>\r\n<head><title>Wartungsarbeiten</title></head></html>", "oops\n2026-10-09T00:00:00.000Z INFO"]) {
+    const mt = makeMockTransport(() => rawResponse(body, "text/html"));
+    await assert.rejects(new RequestEngine({ transport: mt.transport }).postJson("/STATION_SMALL", {}), (err) => {
+      assert.ok(err instanceof MudabParseError);
+      assert.doesNotMatch(err.message, /[\r\n]/, JSON.stringify(err.message));
+      assert.match(err.message, /^Failed to parse JSON response from \/STATION_SMALL: Unexpected token/);
+      return true;
+    });
+  }
+});
+
 test("toWellFormed replaces half a character and keeps whole ones", () => {
-  assert.equal(toWellFormed("a\ud83d b\ude00 \u{1f600}"), "a� b� \u{1f600}");
+  assert.equal(toWellFormed("a\ud83d b\ude00 \u{1f600}"), "a\ufffd b\ufffd \u{1f600}");
 });
 
 test("cutText never cuts inside a surrogate pair", () => {

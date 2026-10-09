@@ -21,6 +21,7 @@ import {
   MudabNetworkError,
   MudabParseError,
   MudabValidationError,
+  MAX_MESSAGE_VALUE_LENGTH,
   credentialsIn,
   cutForMessage,
   cutText,
@@ -593,11 +594,13 @@ export class RequestEngine {
   /**
    * Why a body is not JSON, for the parse error: the parser's reason, the content type and
    * size, and how the body starts (an HTML maintenance page, a byte-order mark, truncation),
-   * all from server text, so control characters are stripped, credentials scrubbed and the
-   * whole cut. "Failed to parse JSON" alone left the user guessing.
+   * all from server text, so control characters are stripped, the parser's reason folded to
+   * one line, credentials scrubbed and the whole cut. "Failed to parse JSON" alone left the user guessing.
    */
   private parseFailure(path: string, res: RawResponse, text: string, cause: unknown): string {
-    const reason = cause instanceof Error ? cause.message : String(cause);
+    // V8's reason quotes the body's first characters raw (`"<html>\r\n<h"... is not valid
+    // JSON`): fold their line breaks, so the message stays one line.
+    const reason = serverTextForMessage(cause instanceof Error ? cause.message : String(cause), MAX_MESSAGE_VALUE_LENGTH);
     const head = text.trimStart();
     const kind = head.startsWith("<")
       ? " It looks like an HTML page (a maintenance or error page from a proxy?), not JSON."

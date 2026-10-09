@@ -156,7 +156,7 @@ the CLI adds a hint pointing at the canonical base URL.
   (a transport's error text, a redirect target — `location` keeps it whole —, a header name,
   a base URL's scheme), so `err.message` stays bounded for a library caller; every cut is made by `cutText` (exported), which never
   splits a surrogate pair, so a message is well-formed; a string option value is quoted. A body that is
-  not JSON names the parser's reason, the content type, the size and how the body starts
+  not JSON names the parser's reason (its line breaks folded, so the message is one line), the content type, the size and how the body starts
   (an HTML page is called one); a body above Node's longest string (~512 MiB) is a
   `MudabParseError` saying so, whatever `maxResponseBytes` allows.
 - **Input validation** ([`validate.ts`](src/client/validate.ts)): a rule is a pure
