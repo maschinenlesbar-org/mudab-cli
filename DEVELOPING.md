@@ -91,6 +91,8 @@ the CLI adds a hint pointing at the canonical base URL.
   and the `parity()` helper (`test/helpers.ts`), which sends one input through `run()`
   and through the library, each on a recording mock transport, so a test can assert
   both give the same outcome.
+- `log.test.ts` — the record helpers of `src/cli/log.ts` on their own
+  (`escapeForRecord`, `formatLogRecord`); the CLI-level checks are P23's.
 - `conformance-p*.test.ts` — the workspace's shared conformance checks from the
   2026-10-05 review (P1 credential redaction in CLI output, P2 in library objects, P4 base-URL
   validation, P5 the transport contract, P6 retries, P7 pipes, P8/P9/P13 charset, 2xx
@@ -213,7 +215,11 @@ Every diagnostic line on stderr is a log record (`src/cli/log.ts`): a timestamp,
 (`ERROR`, `WARN`, `INFO`) and a topic, `mudab.<area>`. `--log-format text` (the default)
 writes it log4j style, `<ISO 8601 UTC> <LEVEL padded to 5> [<topic>] <message>`;
 `--log-format jsonl` writes one JSON object per line with exactly `ts`, `level`, `topic`
-and `msg`. The areas are `cli` (usage errors and the `--from`/`--count` range hint,
+and `msg`. A record is always one line: `formatLogRecord` runs `escapeForRecord` over
+the message (text) or the whole JSON object (jsonl), which writes CR and LF as `\r`/`\n`,
+every other C0 control but TAB, DEL and C1 as `\u00XX`, and U+2028, U+2029 and the bidi
+controls as `\uXXXX`, so no text that reaches a record, by whatever path, can split it,
+forge another one or steer the terminal. The areas are `cli` (usage errors and the `--from`/`--count` range hint,
 commander's messages, unexpected errors), `api` (the API's answers: HTTP errors and the
 `--base-url` redirect hint) and `http` (the connection: network errors, the size-cap hint,
 the cleartext warning). Code logs through `logOf(deps)` and never writes diagnostics with
