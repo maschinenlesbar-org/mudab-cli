@@ -34,7 +34,8 @@ src/
     client.ts    # MudabClient — one method per endpoint, defensive row extraction
     index.ts
   cli/
-    io.ts        # injectable I/O (CliDeps / CliIO) — no env seam (no auth)
+    io.ts        # injectable I/O (CliDeps / CliIO), the logger and the clock — no env seam (no auth)
+    log.ts       # the stderr log: records with ts, level, topic; --log-format text|jsonl
     shared.ts    # option parsers, global->engine mapping, the range builder, JSON render
     commands/list.ts  # every list command + the offline `compartments` table (the library's COMPARTMENT_CODES)
     program.ts   # assembles the commander program from injectable deps
@@ -95,7 +96,7 @@ the CLI adds a hint pointing at the canonical base URL.
   validation, P5 the transport contract, P6 retries, P7 pipes, P8/P9/P13 charset, 2xx
   bodies and error classes); copied across the `*-cli` repos, only the adapter block at
   the top differs. The follow-up round of 2026-10-06 added P20 (a remote plain `http:` base
-  URL gets one `warning:` line on stderr from the library's `cleartextProblem`, printed by
+  URL gets one `WARN` record of `mudab.http` on stderr from the library's `cleartextProblem`, logged by
   `action()` in `shared.ts` before the client is built; no base-URL variable and no secret
   but the URL's own credentials here, so those two cases are skipped) and P21 (every
   relative link in `README.md` points to a file `package.json` `files` ships, since npmjs.com
@@ -157,7 +158,7 @@ the CLI adds a hint pointing at the canonical base URL.
   `Invalid <name>: <reason>`; a method that returns a promise rejects with it. The CLI's
   option parsers call the same `…Problem` functions, so an input gets the same outcome
   on both sides, and `run.ts` reports a `MudabValidationError` raised in an action as a
-  usage error (`Error: <message>`, exit 2).
+  usage error (an `ERROR` record of `mudab.cli`, exit 2).
 - `--base-url` is trusted input but only `http:`/`https:` is accepted. One rule,
   `baseUrlProblem` (`validate.ts`, exported), covers it: a `file:`, `ftp:` or malformed
   value, a query or fragment (paths are appended as a string, so they would swallow
@@ -205,3 +206,21 @@ npm run build                        # the CLI, for the command reference
 cd site && npm ci && bundle install  # once (Node >= 22.12, Ruby 3.4, Bundler)
 npm run serve                        # http://127.0.0.1:4000/mudab-cli/
 ```
+
+## The log on stderr
+
+Every diagnostic line on stderr is a log record (`src/cli/log.ts`): a timestamp, a level
+(`ERROR`, `WARN`, `INFO`) and a topic, `mudab.<area>`. `--log-format text` (the default)
+writes it log4j style, `<ISO 8601 UTC> <LEVEL padded to 5> [<topic>] <message>`;
+`--log-format jsonl` writes one JSON object per line with exactly `ts`, `level`, `topic`
+and `msg`. The areas are `cli` (usage errors and the `--from`/`--count` range hint,
+commander's messages, unexpected errors), `api` (the API's answers: HTTP errors and the
+`--base-url` redirect hint) and `http` (the connection: network errors, the size-cap hint,
+the cleartext warning). Code logs through `logOf(deps)` and never writes diagnostics with
+`io.err` directly. `run()` builds the logger from argv before commander parses it, so
+commander's own usage errors are records too, and on top of the redacted `io.err`, so a
+secret is kept out of the log in either format. `CliDeps.now` makes the timestamps
+testable. stdout carries data only. Conformance test P23 checks all of this, and its body
+is shared across the *-cli repos. Two lines stay plain, outside `run()`: the bin shim's
+`Output error: …` (`handleOutputErrors`, stdout failing) and its last-resort
+`Unexpected error: …` should `run()` itself ever reject.

@@ -55,12 +55,26 @@ mudab compartments                            # compartment code table (offline)
 > ```
 
 Global flags: `--base-url`, `--timeout`, `--user-agent`, `--max-retries`,
-`--max-response-bytes`, `--compact`. A `--base-url` on plain `http:` to a host other than
-loopback (`localhost`, `127.0.0.0/8`, `::1`) prints one
-`warning: requests to <host> are sent unencrypted (http:, not https:)` line on stderr
+`--max-response-bytes`, `--log-format`, `--compact`. A `--base-url` on plain `http:` to a
+host other than loopback (`localhost`, `127.0.0.0/8`, `::1`) logs one `WARN` record of
+`mudab.http`, `requests to <host> are sent unencrypted (http:, not https:)`, on stderr
 before the first request (naming the URL's credentials instead when it carries any,
 never printing them); stdout and the exit code are unchanged. See [Usage.md](https://github.com/maschinenlesbar-org/mudab-cli/blob/main/Usage.md)
 for the full reference.
+
+Each line on stderr is a **log record**: a timestamp (UTC), a level (`ERROR`, `WARN`,
+`INFO`) and a topic, the program and the area it comes from (`mudab.cli` for usage
+errors, `mudab.api` for the API's answers, `mudab.http` for the connection). By default
+it is written log4j style; `--log-format jsonl` writes one JSON object per line instead:
+
+```text
+2026-10-09T14:03:12.481Z WARN  [mudab.http] requests to mirror.test are sent unencrypted (http:, not https:)
+2026-10-09T14:03:12.902Z ERROR [mudab.api] HTTP 404 for POST https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements/STATION_SMALL
+```
+
+```bash
+mudab --log-format jsonl stations 2>log.jsonl   # {"ts":"…","level":"ERROR","topic":"mudab.api","msg":"HTTP 404 …"}
+```
 
 ## Library
 

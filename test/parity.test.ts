@@ -64,7 +64,7 @@ test("parity: a from whose default page ends past 2^31 - 1 is rejected by both, 
   assert.equal(lib.ok, false);
   assert.equal(lib.error?.name, "MudabValidationError");
   assert.equal(lib.requests.length, 0);
-  assert.equal(cli.err.split("\n")[0], `Error: ${lib.error?.message}`);
+  assert.equal(cli.err.split("\n")[0], `ERROR [mudab.cli] ${lib.error?.message}`);
 });
 
 test("the library rejects { all: true } together with a range, and a non-boolean all", async () => {

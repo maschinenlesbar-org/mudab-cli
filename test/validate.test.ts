@@ -5,7 +5,7 @@ import { MudabError, MudabValidationError } from "../src/client/errors.js";
 import * as library from "../src/index.js";
 import { MudabClient } from "../src/client/client.js";
 import { run } from "../src/cli/run.js";
-import { jsonResponse, parity } from "./helpers.js";
+import { jsonResponse, parity, untimed } from "./helpers.js";
 import * as fx from "./fixtures.js";
 
 const nonEmpty: Problem = (value) => (value.trim() === "" ? "Expected a non-empty value." : undefined);
@@ -37,7 +37,7 @@ test("the library root exports the validation layer", () => {
   assert.equal(library.assertValid, assertValid);
 });
 
-test("run() maps a MudabValidationError raised in an action to exit 2 with 'Error: <message>'", async () => {
+test("run() maps a MudabValidationError raised in an action to exit 2 with an ERROR record", async () => {
   const out: string[] = [];
   const err: string[] = [];
   let calls = 0;
@@ -54,7 +54,7 @@ test("run() maps a MudabValidationError raised in an action to exit 2 with 'Erro
   assert.equal(code, 2);
   assert.equal(calls, 1);
   assert.deepEqual(out, []);
-  assert.deepEqual(err, ["Error: Invalid thing: Expected a non-empty value."]);
+  assert.deepEqual(err.map(untimed), ["ERROR [mudab.cli] Invalid thing: Expected a non-empty value."]);
 });
 
 test("parity() runs one input through run() and the library on recording transports", async () => {

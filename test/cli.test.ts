@@ -6,7 +6,7 @@ import type { CliDeps } from "../src/cli/io.js";
 import { renderJson } from "../src/cli/shared.js";
 import { MudabError } from "../src/client/errors.js";
 import type { HttpRequest, HttpResponse } from "../src/client/http.js";
-import { makeMockTransport, jsonResponse, jsonBodyOf, rawResponse } from "./helpers.js";
+import { makeMockTransport, jsonResponse, jsonBodyOf, rawResponse, untimed } from "./helpers.js";
 import * as fx from "./fixtures.js";
 
 function makeCli(responder: (req: HttpRequest) => HttpResponse) {
@@ -137,15 +137,15 @@ test("a redirect exits 1, names the target, and hints at the base URL only when 
   });
   const own = makeCli(redirect);
   assert.equal(await run(["--base-url", "https://legacy.test/MUDABAnwendung", "stations", "--count", "1"], own.deps), 1);
-  assert.deepEqual(own.err, [
-    "Error: HTTP 301 for POST https://legacy.test/MUDABAnwendung/STATION_SMALL: redirect to https://www.mudab.de/x not followed",
-    "Hint: --base-url redirects; the canonical base URL is https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements (the default).",
+  assert.deepEqual(own.err.map(untimed), [
+    "ERROR [mudab.api] HTTP 301 for POST https://legacy.test/MUDABAnwendung/STATION_SMALL: redirect to https://www.mudab.de/x not followed",
+    "INFO  [mudab.api] --base-url redirects; the canonical base URL is https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements (the default).",
   ]);
 
   const dflt = makeCli(redirect);
   assert.equal(await run(["stations", "--count", "1"], dflt.deps), 1);
   assert.equal(dflt.err.length, 1);
-  assert.match(dflt.err[0]!, /^Error: HTTP 301 for POST https:\/\/geoportal\.bafg\.de\/.*redirect to https:\/\/www\.mudab\.de\/x not followed$/);
+  assert.match(untimed(dflt.err[0]!), /^ERROR \[mudab\.api\] HTTP 301 for POST https:\/\/geoportal\.bafg\.de\/.*redirect to https:\/\/www\.mudab\.de\/x not followed$/);
 });
 
 test("an unknown command exits 2", async () => {
@@ -180,13 +180,13 @@ test("--from/--count are bounded to 2^31 - 1, and so is their sum", async () => 
     [["--from", "2147483648"], /Must be <= 2147483647\./],
     [["--count", "999999999999"], /Must be <= 2147483647\./],
     [["--count", "99999999999999999999"], /Must be <= 2147483647\./],
-    [["--from", "2147483647", "--count", "1"], /^Error: Invalid range: from \+ count must not exceed 2147483647 .*HTTP 403.*got 2147483648\.\nHint: .*--all/],
+    [["--from", "2147483647", "--count", "1"], /^ERROR \[mudab\.cli\] Invalid range: from \+ count must not exceed 2147483647 .*HTTP 403.*got 2147483648\.\nINFO  \[mudab\.cli\] .*--all/],
     [["--from", "2147483600"], /from \+ count \(count defaults to 100\) must not exceed 2147483647/],
   ] as const) {
     const cli = makeCli(() => jsonResponse(fx.stations));
     assert.equal(await run(["stations", ...args], cli.deps), 2, args.join(" "));
     assert.equal(cli.mt.calls.length, 0, args.join(" "));
-    assert.match(cli.err.join("\n"), message, args.join(" "));
+    assert.match(untimed(cli.err.join("\n")), message, args.join(" "));
   }
   const ok = makeCli(() => jsonResponse({ V_STATION_SMALL: [] }));
   assert.equal(await run(["stations", "--from", "2147483646", "--count", "1"], ok.deps), 0);
@@ -197,7 +197,7 @@ test("a 200 error object exits 1 with a shape error instead of printing []", asy
   const cli = makeCli(() => rawResponse('{"message":"ORA-00942: table or view does not exist"}', "application/json"));
   assert.equal(await run(["stations", "--compact"], cli.deps), 1);
   assert.deepEqual(cli.out, []);
-  assert.match(cli.err.join("\n"), /^Error: Unexpected response shape from \/STATION_SMALL: .*ORA-00942/);
+  assert.match(untimed(cli.err.join("\n")), /^ERROR \[mudab\.cli\] Unexpected response shape from \/STATION_SMALL: .*ORA-00942/);
 });
 
 for (const [bad, message] of [
@@ -241,14 +241,14 @@ test("a deeply nested response fails cleanly instead of overflowing the stack", 
   const body = `{"V_STATION_SMALL":[{"R":${"[".repeat(depth)}${"]".repeat(depth)}}]}`;
   const pretty = makeCli(() => rawResponse(body, "application/json"));
   assert.equal(await run(["stations"], pretty.deps), 1);
-  assert.deepEqual(pretty.err, ["Error: The response is nested too deeply to pretty-print; try --compact."]);
+  assert.deepEqual(pretty.err.map(untimed), ["ERROR [mudab.cli] The response is nested too deeply to pretty-print; try --compact."]);
 
   const compact = makeCli(() => rawResponse(body, "application/json"));
   const code = await run(["--compact", "stations"], compact.deps);
   // The compact form may fit on the stack; if it does not, the message is clean too.
   if (code !== 0) {
     assert.equal(code, 1);
-    assert.deepEqual(compact.err, ["Error: The response is nested too deeply to print."]);
+    assert.deepEqual(compact.err.map(untimed), ["ERROR [mudab.cli] The response is nested too deeply to print."]);
   }
 });
 
