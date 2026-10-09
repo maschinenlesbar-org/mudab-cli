@@ -197,7 +197,7 @@ test("a 200 error object exits 1 with a shape error instead of printing []", asy
   const cli = makeCli(() => rawResponse('{"message":"ORA-00942: table or view does not exist"}', "application/json"));
   assert.equal(await run(["stations", "--compact"], cli.deps), 1);
   assert.deepEqual(cli.out, []);
-  assert.match(untimed(cli.err.join("\n")), /^ERROR \[mudab\.cli\] Unexpected response shape from \/STATION_SMALL: .*ORA-00942/);
+  assert.match(untimed(cli.err.join("\n")), /^ERROR \[mudab\.api\] Unexpected response shape from \/STATION_SMALL: .*ORA-00942/);
 });
 
 for (const [bad, message] of [
