@@ -4,7 +4,7 @@
 [![Release](https://github.com/maschinenlesbar-org/mudab-cli/actions/workflows/release.yml/badge.svg)](https://github.com/maschinenlesbar-org/mudab-cli/actions/workflows/release.yml)
 [![npm](https://img.shields.io/npm/v/@maschinenlesbar.org/mudab-cli)](https://www.npmjs.com/package/@maschinenlesbar.org/mudab-cli)
 
-**Website:** [English](https://maschinenlesbar-org.github.io/mudab-cli/) · [Deutsch](https://maschinenlesbar-org.github.io/mudab-cli/de/) — command reference, guides and API docs
+**Website:** [English](https://maschinenlesbar.org/mudab-cli/) · [Deutsch](https://maschinenlesbar.org/mudab-cli/de/) — command reference, guides and API docs
 
 A tiny, dependency-light **TypeScript client + CLI** for the **MUDAB**
 (Meeresumweltdatenbank — the German marine environment database) REST API:
