@@ -208,13 +208,16 @@ to the CLI's own. Files:
   invalid transport response; the original error, scrubbed, is its `cause`.
 - **Numbers are carried exactly or refused.** `JSON.parse` turns a number out of a double's
   range into Infinity (printed as `null`), rounds one past 2^53 (`12345678901234567890`, also as
-  `…890.0`, `9007199254740993e0`, `9007199254740992.5`) and turns a non-zero one too small
-  (`1e-400`) into 0, all silently. `postJson` scans the text after parsing
+  `…890.0`, `9007199254740993e0`, `9007199254740992.5`), turns a non-zero one too small
+  (`1e-400`) into 0 and a subnormal into the nearest one it can hold (`3e-324` into `5e-324`), all
+  silently. `postJson` scans the text after parsing
   (`firstInexactNumber`, `exactAtTheEdges` in `engine.ts`) and makes such an answer a
   `MudabParseError` (exit 1): `Unexpected response from <path>: the number <N> cannot be
   represented exactly.` Past 2^53 the check compares the number as written with the number as
   printed (`String(value)`, `decimalOf`): `1E23` or `1.7976931348623157E308`, a double a server
-  printed in its shortest form, prints as the same number and passes. Below 2^53 a decimal fraction keeps a double's precision, as JSON means
+  printed in its shortest form, prints as the same number and passes. So does a subnormal (below
+  2.2250738585072014e-308, the smallest normal double, `MIN_NORMAL`), where a double has fewer
+  digits: `5e-324` and `1e-310` pass, `3e-324` is refused. Between those, below 2^53, a decimal fraction keeps a double's precision, as JSON means
   it, so the measured values (`VALUE_MS`, `VALUE`) pass as they are; no MUDAB field is a number
   past 2^53 (ids are small integers). `extractRows` still refuses a non-finite field in rows a
   library caller hands it.
