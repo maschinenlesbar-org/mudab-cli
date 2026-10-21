@@ -268,6 +268,26 @@ test("a deeply nested response fails cleanly instead of overflowing the stack", 
   }
 });
 
+test("--compact takes the gap path only for an answer holding a huge string, the fast path otherwise", (t) => {
+  // On Node 26 V8's fast stringifier (no gap) aborts the process on a ~250 MB string that
+  // JSON.parse made ("Zone Allocation failed", exit 134); the gap path prints it. Only the fast
+  // path is iterative there, though, and prints nesting the gap path refuses at ~7,000 levels.
+  // So the path is chosen per answer. Too big a body for this suite: this pins the calls.
+  const out: string[] = [];
+  const deps: CliDeps = { io: { out: (s) => out.push(s), err: () => {} }, createClient: () => new MudabClient() };
+  const stringify = t.mock.method(JSON, "stringify", () => '"stub"');
+  const huge = "x".repeat(64 * 1024 * 1024);
+  renderJson(deps, { compact: true }, [{ STATNAME_ST: "a1", text: huge }]);
+  renderJson(deps, { compact: true }, [{ STATNAME_ST: "a1", x: [[["Rede"]]], text: huge.slice(1) }]);
+  renderJson(deps, { compact: true }, { [huge]: 1 });
+  renderJson(deps, { compact: true }, [[huge]]);
+  renderJson(deps, {}, { id: "a1" });
+  const calls = stringify.mock.calls.map((call) => call.arguments);
+  stringify.mock.restore();
+  assert.deepEqual(calls.map((args) => (args.length >= 3 ? args[2] : "none")), ["", "none", "", "", 2]);
+  assert.deepEqual(out, ['"stub"', '"stub"', '"stub"', '"stub"', '"stub"']);
+});
+
 test("an output too large for one string is reported as such, not as nesting", () => {
   // Stands in for a ~450 MB table: JSON.stringify throws V8's "Invalid string length".
   const huge = { toJSON: () => { throw new RangeError("Invalid string length"); } };

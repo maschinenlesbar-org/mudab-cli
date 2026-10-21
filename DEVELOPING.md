@@ -284,6 +284,12 @@ to the CLI's own. Files:
   The CLI replaces the Basic value and the pair on stdout and stderr, the bare password on
   stderr only (on stdout a short password may well occur in the data). Whatever a custom transport throws reaches
   the caller as a `MudabNetworkError` (the original, scrubbed, as `cause`).
+- **Printing JSON** (`renderJson`, `shared.ts`): pretty by default; an answer nested too deeply
+  to pretty-print is an ERROR record of `mudab.cli` suggesting `--compact`, one too large for a
+  string suggests paging. `--compact` takes V8's fast path (`JSON.stringify(value)`) unless the
+  answer holds a string or key of 64 Mi characters or more (`holdsHugeString`), which goes
+  through the gap path (`JSON.stringify(value, null, "")`, the same text): on Node 26 the fast
+  path aborts the process on a ~250 MB string, but only it prints very deep nesting there.
 - **Scaffold origin:** this repo was scaffolded from `entgeltatlas-cli`; the API-key /
   X-API-Key machinery was stripped because MUDAB needs no auth.
 
