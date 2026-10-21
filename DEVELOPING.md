@@ -183,7 +183,10 @@ to the CLI's own. Files:
 - **Exit codes** (`run.ts`): help/version → 0; usage → 2; 404 → 4; network → 6; other → 1.
 - **One value per option** (`forbidRepeatedOptions`, `shared.ts`, run by `buildProgram` over the
   whole tree): a single-value option given twice is a usage error (`--x may be given only
-  once.`, exit 2, no request), never commander's "the last one wins". Flags may repeat. An
+  once.`, exit 2, no request), never commander's "the last one wins". Flags may repeat. A
+  boolean that can be switched both ways (an optional value `--x [bool]`, or a pair `--x` /
+  `--no-x`; mudab has none today) may be given only once, counted per attribute through
+  commander's `option:<name>` events. An
   option meant to be repeated would be declared with an array default (`collect, []`); there
   is none today.
 - **Retry/backoff:** transient `429`/`503` retried up to `maxRetries`. The linear
