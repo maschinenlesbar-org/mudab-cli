@@ -4,6 +4,9 @@
 // body and returns a single-key object wrapping a homogeneous row array. The row
 // item shapes below come from the OpenAPI spec, corrected against the live API
 // (the spec's response wrapper keys and its Compartment enum are both incomplete).
+//
+// A field typed `| null` is sent as `null` in some real rows (counted on the whole tables on
+// 2026-10-21), so a strict consumer has to handle it; the others were never null then.
 
 /**
  * Compartment ("Kompartiment") code, from the `COMPT_DS` field. Common values,
@@ -22,8 +25,8 @@ export interface ProjectStation {
   NAME_PS?: string;
   /** Region (e.g. "Nordsee", "Ostsee"). */
   REGION?: string;
-  /** Institute the project station belongs to. */
-  INSTITUT?: string;
+  /** Institute the project station belongs to; `null` for some (14 of 1,948 on 2026-10-21). */
+  INSTITUT?: string | null;
 }
 
 /** `STATION_SMALL` item — a measurement station. */
@@ -33,8 +36,8 @@ export interface Messstation {
   STATNAME_ST?: string;
   /** Name of the project station this station belongs to. */
   NAME_PS?: string;
-  /** Station type. */
-  STATIONTYPE_ST?: string;
+  /** Station type; `null` for some rows (2,030 of 83,986 on 2026-10-21). */
+  STATIONTYPE_ST?: string | null;
   /** Compartment code (see {@link Compartment}). */
   COMPT_DS?: Compartment;
 }
@@ -45,14 +48,14 @@ export interface Parameter {
   COMPT_DS?: Compartment;
   /** Parameter abbreviation (e.g. "24DP"). */
   PARAMETER?: string;
-  /** Parameter group code. */
-  PARAMETERGRUPPE?: string;
+  /** Parameter group code; `null` for a parameter in no group (118 of 889 on 2026-10-21). */
+  PARAMETERGRUPPE?: string | null;
   /** Parameter name (e.g. "Dichloroprop"). */
   PARAM_NAME?: string;
-  /** Parameter group code (duplicate of PARAMETERGRUPPE in practice). */
-  PARGROUP?: string;
-  /** Parameter-group name (e.g. "Pesticides (general)"). */
-  PARAMGROUP_NAME?: string;
+  /** Parameter group code (duplicate of PARAMETERGRUPPE in practice, `null` with it). */
+  PARGROUP?: string | null;
+  /** Parameter-group name (e.g. "Pesticides (general)"); `null` with PARAMETERGRUPPE. */
+  PARAMGROUP_NAME?: string | null;
 }
 
 /** `MV_STATION_MSMNT` item — a single measured value at a station. */
@@ -82,10 +85,13 @@ export interface HelcomPLCStation {
   STATION_CODE?: string;
   /** Bundesland (federal state) code of the station. */
   LAND_CD?: string;
-  /** Latitude. */
-  ST_LAT?: number;
-  /** Longitude. */
-  ST_LON?: number;
+  /**
+   * Latitude; `null` for some stations (the 19 `MUNCP_FL_LD` municipal plants on 2026-10-21; the
+   * `UNMONITORED` pseudo-stations have 0/0 instead).
+   */
+  ST_LAT?: number | null;
+  /** Longitude; `null` with ST_LAT. */
+  ST_LON?: number | null;
   SUBCM_CODE?: string;
   SUBCM_NAME?: string;
   MON_TYPE?: string;
@@ -116,12 +122,12 @@ export interface MesswertPLC {
   metadataid?: number;
   /** Running number of the datum. */
   NUMMER?: number;
-  /** Measured-value label. */
-  NAME?: number | string;
+  /** Measured-value label: the parameter, e.g. "Ntot", "Ptot", "FLOW" (a string in every live row). */
+  NAME?: string;
   STATION_CODE?: string;
   STATION_NAME?: string;
-  /** The value. */
-  VALUE?: number;
+  /** The value; `null` when there is none (38 of 19,711 rows on 2026-10-21): drop nulls before arithmetic. */
+  VALUE?: number | null;
   /** Aggregation type, "TOT" or "AVE". */
   PARAM_TYPE?: string;
   /** Numeric code for NAME. */
@@ -132,8 +138,10 @@ export interface MesswertPLC {
   PERIOD_TYPE?: string;
   /** Bundesland (federal state) code. */
   LAND_CD?: string;
-  ST_LAT?: number;
-  ST_LON?: number;
+  /** The station's latitude; `null` for the stations that have none (see HelcomPLCStation). */
+  ST_LAT?: number | null;
+  /** The station's longitude; `null` with ST_LAT. */
+  ST_LON?: number | null;
   SUBCM_CODE?: string;
   SUBCM_NAME?: string;
   MON_TYPE?: string;

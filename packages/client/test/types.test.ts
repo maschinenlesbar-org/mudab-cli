@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DEFAULT_BASE_URL, MudabClient } from "../src/index.js";
+import { DEFAULT_BASE_URL, MudabClient, type HelcomPLCStation, type Messstation, type MesswertPLC, type Parameter, type ProjectStation } from "../src/index.js";
 import { jsonBodyOf, jsonResponse, makeMockTransport } from "./helpers.js";
 
 // Runs the TypeScript compiler over a consumer file.
@@ -89,4 +89,36 @@ test("an option given as undefined means its default, as an omitted one does", a
     assert.deepEqual(jsonBodyOf(req), { range: { from: 0, count: 100 } });
   }
   assert.equal(mt.calls.length, 2);
+});
+
+// ---- 01-1: the fields the live API sends as null are typed `| null` ----
+// Counted on the whole tables on 2026-10-21: STATIONTYPE_ST (2,030 of 83,986 stations), INSTITUT
+// (14 of 1,948 project stations), PARAMETERGRUPPE/PARGROUP/PARAMGROUP_NAME (118 of 889
+// parameters), ST_LAT/ST_LON (19 of 178 PLC stations, 193 PLC measurements), VALUE (38 PLC
+// measurements). Typed without null, a strict consumer that guarded `=== undefined` compiled and
+// threw on the real rows. A compile-time check: the build fails if a type drops `null` again.
+type Holds<T extends true> = T;
+type AcceptsNull<T, K extends keyof T> = null extends T[K] ? true : false;
+export type NullableFields = [
+  Holds<AcceptsNull<Messstation, "STATIONTYPE_ST">>,
+  Holds<AcceptsNull<ProjectStation, "INSTITUT">>,
+  Holds<AcceptsNull<Parameter, "PARAMETERGRUPPE">>,
+  Holds<AcceptsNull<Parameter, "PARGROUP">>,
+  Holds<AcceptsNull<Parameter, "PARAMGROUP_NAME">>,
+  Holds<AcceptsNull<HelcomPLCStation, "ST_LAT">>,
+  Holds<AcceptsNull<HelcomPLCStation, "ST_LON">>,
+  Holds<AcceptsNull<MesswertPLC, "ST_LAT">>,
+  Holds<AcceptsNull<MesswertPLC, "ST_LON">>,
+  Holds<AcceptsNull<MesswertPLC, "VALUE">>,
+];
+// Every live NAME is a string (the parameter label, e.g. "Ntot").
+export type NameIsText = Holds<MesswertPLC["NAME"] extends string | undefined ? true : false>;
+
+test("a null the live API sends is passed through as null, as the types say (01-1)", async () => {
+  const row = { NAME: "Ntot", VALUE: null, ST_LAT: null, ST_LON: null, VAL_UNIT: "t/a" };
+  const mt = makeMockTransport(() => jsonResponse({ V_MESSWERTE_PLC: [row] }));
+  const [got] = await new MudabClient({ transport: mt.transport }).plcMeasurements({ range: { from: 7064, count: 1 } });
+  const value: number | null | undefined = got?.VALUE;
+  assert.equal(value, null);
+  assert.deepEqual(got, row);
 });

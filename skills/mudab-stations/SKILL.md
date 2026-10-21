@@ -88,7 +88,9 @@ mudab stations --all --compact | jq '[.[].STATNAME_ST] | unique | length'
   compartment only when the question is about compartments, and say so. At ~9 MB, `stations --all` is fine to fetch once.
 - **PLC stations are not all rivers.** `MON_TYPE` is `MON_RIVER_LOAD`, `MUNCP_FL_LD`
   (municipal treatment plants), `STAT_FL_CONC` (flow gauges) or `UNMONITORED` (two
-  pseudo-stations with coordinates 0/0). Filter on it when the user means rivers.
+  pseudo-stations with coordinates 0/0). Filter on it when the user means rivers. Some
+  `MUNCP_FL_LD` plants have `ST_LAT`/`ST_LON` `null` (19 of 178 stations on 2026-10-21): drop
+  them (`select(.ST_LAT != null)`) before mapping, and say how many had no coordinates.
 - **Region lives on project stations** (`REGION`), not on measurement stations.
 - **Labels are German** (`Nordsee`, `Ostsee`) — keep them verbatim.
 - Hand off to **mudab-parameters** (what is measured) or **mudab-measurements** (values).
