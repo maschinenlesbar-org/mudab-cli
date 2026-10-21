@@ -24,7 +24,7 @@ npm run bump -- <patch|minor|major>  # bump apps/cli, commit, tag vX.Y.Z
 node --test apps/cli/dist/test/cli.test.js   # one file, after a build
 ```
 
-CI (`ci.yml`) type-checks, builds and tests on Node 22/24, then packs the real tarball,
+CI (`ci.yml`) type-checks, builds and tests on Node 22/24/26, then packs the real tarball,
 checks the pack left nothing behind, installs it globally with the registry out of reach and
 runs the bin. `release.yml` (on a `v*` tag, made by `npm run bump`) verifies the tag against
 `apps/cli/package.json`, writes the SBOMs (scoped to the `apps/cli` workspace) and runs
@@ -168,7 +168,7 @@ to the CLI's own. Files:
 - **Zero runtime HTTP deps** — `node:http`/`https` only; the CLI's only runtime dep is
   `commander`.
 - **Strict TS** (`strict`, `noUncheckedIndexedAccess`, `noUnusedLocals`) and ESM
-  (`module: NodeNext`). Keep passing on Node 22/24 (`engines`: `>=22.12`, the floor of
+  (`module: NodeNext`). Keep passing on Node 22/24/26 (`engines`: `>=22.12`, the floor of
   `commander` 15).
 - **Exit codes** (`run.ts`): help/version → 0; usage → 2; 404 → 4; network → 6; other → 1.
 - **One value per option** (`forbidRepeatedOptions`, `shared.ts`, run by `buildProgram` over the
