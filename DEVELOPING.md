@@ -170,8 +170,10 @@ to the CLI's own. Files:
   (`.reviews/2026-10-21-exploratory/fix-plan.md`) added P27, big and odd answers: a large flat
   answer and one full of DEL characters print within a small heap, or past V8's longest string are
   one ERROR record of `mudab.output`; a lone surrogate or invalid bytes are replaced with U+FFFD
-  and reported in a WARN of `mudab.api` (it starts the built bin, so 30 s). P26 (`-o`) is not
-  copied: there is no `-o`.
+  and reported in a WARN of `mudab.api` (it starts the built bin, so 30 s). P26 output integrity:
+  mudab has no `-o`, so its adapter sets `HAS_OUTPUT_OPTION = false` and only the stdout case
+  runs (stdout redirected to a file and cut short under `ulimit -f` exits 1 with an ERROR record
+  of `mudab.output`, never 0).
 
 ## Conventions to keep
 
@@ -404,8 +406,10 @@ commander's messages, unexpected errors), `api` (the API's answers: HTTP errors,
 malformed answer — a `MudabParseError`: bad JSON, the wrong shape, an empty body, more rows
 than asked for, an unknown charset, a number that can't be represented exactly — and the
 `--base-url` redirect hint), `http` (the connection: network errors, the size-cap hint,
-the cleartext warning) and `output` (a failed write to stdout, an answer too deeply nested or too
-large to print). A failed write to stdout
+the cleartext warning) and `output` (a failed or cut-short write to stdout, an answer too deeply
+nested or too large to print). When stdout is a regular file, `defaultIO.out` writes every byte
+itself (`stdoutWriter`, a loop over `writeSync`): a write cut short (EFBIG, ENOSPC) is emitted as
+stdout's `error` rather than lost with exit 0. A failed write to stdout
 other than a closed pipe (`handleOutputErrors`, in the bin shim, outside `run()`) is an
 ERROR record of `mudab.output` (`Could not write to stdout: …`), and the shim's
 last-resort `Unexpected error: …` an ERROR of `mudab.cli`, both in the format argv asks
