@@ -326,10 +326,12 @@ to the CLI's own. Files:
   userinfo of every URL argument (`credentialsIn`, exported) and replaces it with `***` in
   everything it prints — commander's usage errors, which echo a rejected `--base-url`
   value, and its other messages — so a password with spaces, quotes, `#`, `?` or `/` is
-  caught as well as an ordinary one. Only a value that starts with a scheme counts (a bare
+  caught as well as an ordinary one. Only a URL with a scheme counts (a bare
   `a:b@c` is a User-Agent or a typed value as often as a credential), except as the
   `--base-url` value, where a `user:password@host` typed without its scheme is still a
-  credential. The log replaces them in each record's *message*,
+  credential. It is found anywhere in an argument (`urlsWithin`), not only at its start: a
+  padded `" https://user:pw@host"`, one after a dash or inside a phrase is echoed by a refusal
+  (a `--compartment`, a `--base-url`), by commander or as a surplus argument just the same. The log replaces them in each record's *message*,
   before the record is cut and escaped, and writes it to the raw stderr: the frame (time,
   level, topic) is never touched, and a password with DEL, C1 or bidi characters is matched
   in its raw form. `redactUrl` (exported) falls back to the same

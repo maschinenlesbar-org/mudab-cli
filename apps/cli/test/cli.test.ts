@@ -546,3 +546,30 @@ test("--help states the 30 s default timeout, and a timeout points at --timeout 
     "INFO  [mudab.http] The whole response must arrive within --timeout (5 ms here; default 30000). A large table (measurements --all) on a slow link needs more: raise --timeout <ms> (0 = no limit), or page with --from/--count.",
   ]);
 });
+
+// T15 of the 2026-10-21 fix round (the class of jobsuche-cli 28be809): the redaction looked for
+// a URL's credentials only in an argument that starts with a scheme, so a padded value, one
+// after a dash or inside a phrase, echoed in a refusal or by commander, printed the password.
+test("a password in a URL anywhere in an argument is redacted on stderr, in every message that quotes it (T15)", async () => {
+  const url = "https://bob:s3cretpw@host.example/";
+  const values = [url, ` ${url}`, `\t${url}`, ` -${url}`, `x ${url}`, `wasser​${url}`];
+  // A refused --compartment (commander's echo and the library's quote), a refused --count, a
+  // refused --user-agent, a surplus argument, an unknown command and a refused --base-url.
+  const argvs = values.flatMap((v) => [
+    ["parameters", "--compartment", v],
+    ["parameters", `--compartment=${v}`],
+    ["stations", "--count", v],
+    ["--user-agent", `${v}\u20ac`, "stations"],
+    ["stations", v],
+    [v],
+    ["--base-url", v, "stations"],
+  ]);
+  for (const argv of argvs) {
+    for (const format of ["text", "jsonl"]) {
+      const cli = makeCli(() => jsonResponse(fx.stations));
+      await run(["--log-format", format, ...argv], cli.deps);
+      const err = cli.err.join("\n");
+      assert.doesNotMatch(err, /s3cretpw|bob%3As3/, `${JSON.stringify(argv)} ${format}: ${err}`);
+    }
+  }
+});
