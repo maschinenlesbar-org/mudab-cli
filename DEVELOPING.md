@@ -307,7 +307,11 @@ to the CLI's own. Files:
   the caller as a `MudabNetworkError` (the original, scrubbed, as `cause`).
 - **Printing JSON** (`renderJson`, `shared.ts`): `escapeControlChars` writes the characters
   `JSON.stringify` leaves raw although a terminal acts on them — DEL, C1 (U+0080–U+009F) and the
-  bidi controls (`isBidiControl`, exported from `engine.ts`) — as `\uXXXX`. Pretty by default. An answer that can't be printed is an
+  bidi controls (`isBidiControl`, exported from `engine.ts`) — as `\uXXXX`. It measures the
+  escaped length first (past V8's longest string it is an `OutputError`, "The answer is too large
+  to print (N characters once its control characters are escaped)") and builds the text in 64 Ki
+  chunks joined once, so an answer full of DEL characters prints within a small heap instead of
+  crashing it. Pretty by default. An answer that can't be printed is an
   `OutputError`, an ERROR record of `mudab.output` (exit 1) that names the cause, never a stack
   trace: "nested too deeply" (the stack overflowed) or "too large (more than 536870888 characters
   of JSON)" (V8's longest string, `Invalid string length`), which adds "page it with
