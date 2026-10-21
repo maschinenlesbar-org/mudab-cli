@@ -489,21 +489,25 @@ export class RequestEngine {
     return copy;
   }
 
+  /** `POST <url> failed: `, the start of a network error's message (userinfo redacted, cut). */
+  private failedPrefix(method: string, url: string): string {
+    return `${method} ${cutForMessage(redactUrl(url))} failed: `;
+  }
+
   /**
    * What the transport threw, as the error the engine raises. The default transport
    * rejects with `MudabNetworkError` only; an injected one may throw anything (a string, a
    * `TypeError` from fetch). Every failure becomes a `MudabNetworkError` — a `MudabError` a
-   * caller and the CLI can rely on — with the base URL's credentials scrubbed from its
-   * message and cause chain; any other `MudabError` passes through, and a clean
-   * `MudabNetworkError` stays as it is.
+   * caller and the CLI can rely on — that names the request (`POST <url> failed: <reason>`:
+   * Node's "socket hang up" or "connect ECONNREFUSED" says nothing about which request
+   * failed), with the base URL's credentials scrubbed from its message and the original,
+   * scrubbed, as its `cause`; any other `MudabError` passes through.
    */
-  private transportError(cause: unknown): MudabError {
+  private transportError(cause: unknown, method: string, url: string): MudabError {
     if (cause instanceof MudabError && !(cause instanceof MudabNetworkError)) return cause;
     const reason = cause instanceof Error ? cause.message : String(cause);
     const message = cutForMessage(sanitizeServerText(this.scrub(reason)));
-    const scrubbed = this.scrubCause(cause);
-    if (cause instanceof MudabNetworkError && message === cause.message && scrubbed === cause) return cause;
-    return new MudabNetworkError(message, { cause: scrubbed });
+    return new MudabNetworkError(`${this.failedPrefix(method, url)}${message}`, { cause: this.scrubCause(cause) });
   }
 
   /**
@@ -575,14 +579,14 @@ export class RequestEngine {
         });
       } catch (cause) {
         // Not retried, whatever the failure (a reset included): see `maxRetries`.
-        throw this.transportError(cause);
+        throw this.transportError(cause, method, url);
       }
 
       // An injected transport may resolve with anything; a malformed HttpResponse would
       // otherwise surface below as a raw TypeError (or, without a status, as success).
       const invalid = responseProblem(response);
       if (invalid !== undefined) {
-        throw new MudabNetworkError(`The transport returned an invalid response (${invalid}).`);
+        throw new MudabNetworkError(`${this.failedPrefix(method, url)}The transport returned an invalid response (${invalid}).`);
       }
       const status = response.status;
       const responseHeaders = plainHeaders(response.headers);
@@ -591,7 +595,7 @@ export class RequestEngine {
       // The size cap holds whatever the transport did: the default one aborts early, a custom
       // one may have read everything.
       if (this.maxResponseBytes > 0 && body.byteLength > this.maxResponseBytes) {
-        throw new MudabNetworkError(sizeLimitMessage(this.maxResponseBytes));
+        throw new MudabNetworkError(`${this.failedPrefix(method, url)}${sizeLimitMessage(this.maxResponseBytes)}`);
       }
       const retryable = status === 429 || status === 503;
       const retryAfter = retryable ? parseRetryAfter(responseHeaders["retry-after"]) : undefined;

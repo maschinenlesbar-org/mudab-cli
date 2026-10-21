@@ -189,7 +189,10 @@ to the CLI's own. Files:
   or ArrayBuffer as the body (`bodyBytes`), and turns a malformed response (no or a
   non-HTTP status, no headers, another body type) or anything thrown into a
   `MudabNetworkError`. The size-limit message names `maxResponseBytes` and
-  `--max-response-bytes`.
+  `--max-response-bytes`. Every network error names the request, like
+  `POST https://***@host/…/STATION_SMALL failed: <reason>` (userinfo redacted, the URL cut at 500
+  characters): a timeout, the size cap, a reset or refused connection, a DNS failure and an
+  invalid transport response; the original error, scrubbed, is its `cause`.
 - **Numbers are carried exactly or refused.** `JSON.parse` turns a number out of a double's
   range into Infinity (printed as `null`), rounds one past 2^53 (`12345678901234567890`, also as
   `…890.0`, `9007199254740993e0`, `9007199254740992.5`) and turns a non-zero one too small

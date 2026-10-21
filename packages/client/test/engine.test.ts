@@ -486,7 +486,9 @@ test("a transport's error text and a redirect target are cut in the message; loc
   const thrown = new RequestEngine({ baseUrl: "https://a.test", transport: async () => { throw new Error(long); } });
   const err = await thrown.postJson("/x", {}).catch((caught: unknown) => caught);
   assert.ok(err instanceof MudabNetworkError);
-  assert.ok(err.message.length <= 501, String(err.message.length));
+  // The request it names, then the transport's text, cut at 500 characters (+ "…").
+  assert.ok(err.message.startsWith("POST https://a.test/x failed: yyy"), err.message.slice(0, 40));
+  assert.ok(err.message.length <= "POST https://a.test/x failed: ".length + 501, String(err.message.length));
   const target = `https://b.test/${long}`;
   const redirect = new RequestEngine({
     baseUrl: "https://a.test",
@@ -611,4 +613,42 @@ test("a throw in onRetry is swallowed", async () => {
 
 test("onRetry must be a function", () => {
   assert.throws(() => new RequestEngine({ onRetry: 5 as never }), MudabValidationError);
+});
+
+test("a network error names the request: a timeout, the size cap, a refused connection, DNS, a reset", async () => {
+  const url = "https://***@mirror.example/api/STATION_SMALL";
+  const boom = (code: string, message: string) => Object.assign(new Error(message), { code });
+  const cases: Array<[string, Partial<ConstructorParameters<typeof RequestEngine>[0]>, () => Promise<HttpResponse>, string]> = [
+    ["timeout", { timeoutMs: 5 }, () => new Promise<HttpResponse>(() => {}), "Request timed out after 5ms"],
+    ["size cap", { maxResponseBytes: 3 }, async () => rawResponse("[1,2,3,4]", "application/json"), "Response exceeded the size limit of 3 bytes (maxResponseBytes; --max-response-bytes on the CLI)"],
+    ["refused", {}, async () => { throw boom("ECONNREFUSED", "connect ECONNREFUSED 127.0.0.1:9"); }, "connect ECONNREFUSED 127.0.0.1:9"],
+    ["dns", {}, async () => { throw boom("ENOTFOUND", "getaddrinfo ENOTFOUND mirror.example"); }, "getaddrinfo ENOTFOUND mirror.example"],
+    ["reset", {}, async () => { throw new MudabNetworkError("socket hang up"); }, "socket hang up"],
+    ["invalid", {}, async () => ({ headers: {}, body: Buffer.alloc(0) }) as unknown as HttpResponse, "The transport returned an invalid response (status is not an HTTP status code)."],
+  ];
+  for (const [name, options, respond, reason] of cases) {
+    const mt = makeMockTransport(respond);
+    const e = new RequestEngine({ baseUrl: "https://user:pw@mirror.example/api", transport: mt.transport, ...options });
+    await assert.rejects(e.postJson("/STATION_SMALL", {}), (err: unknown) => {
+      assert.ok(err instanceof MudabNetworkError, name);
+      assert.equal(err.message, `POST ${url} failed: ${reason}`, name);
+      if (name === "refused" || name === "dns" || name === "reset") assert.ok(err.cause instanceof Error, name);
+      return true;
+    });
+  }
+});
+
+test("a refused loopback connection names the request (real transport)", async () => {
+  const net = await import("node:net");
+  const server = net.createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as { port: number }).port;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  const e = new RequestEngine({ baseUrl: `http://127.0.0.1:${port}/mudab` });
+  await assert.rejects(e.postJson("/STATION_SMALL", {}), (err: unknown) => {
+    assert.ok(err instanceof MudabNetworkError);
+    assert.match(err.message, new RegExp(`^POST http://127\\.0\\.0\\.1:${port}/mudab/STATION_SMALL failed: connect ECONNREFUSED`));
+    assert.ok(err.cause instanceof Error);
+    return true;
+  });
 });
