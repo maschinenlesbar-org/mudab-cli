@@ -156,14 +156,14 @@ export interface FilterCondition {
 
 /** A filter: a single condition, applied as `and` or `or`. */
 export interface Filter {
-  and?: FilterCondition;
-  or?: FilterCondition;
+  and?: FilterCondition | undefined;
+  or?: FilterCondition | undefined;
 }
 
 /** Result window: skip `from`, return up to `count` rows. */
 export interface Range {
-  from?: number;
-  count?: number;
+  from?: number | undefined;
+  count?: number | undefined;
 }
 
 /** Sort order. */
@@ -171,7 +171,7 @@ export interface OrderBy {
   /** Column to sort by. */
   col: string;
   /** Direction (ascending or descending). */
-  dir?: "asc" | "desc";
+  dir?: "asc" | "desc" | undefined;
 }
 
 /**
@@ -188,9 +188,9 @@ export interface OrderBy {
  * count-only range with an HTTP 500, so the client's list methods fill in `from: 0`.
  */
 export interface FilterRequest {
-  filter?: Filter;
-  range?: Range;
-  orderby?: OrderBy;
+  filter?: Filter | undefined;
+  range?: Range | undefined;
+  orderby?: OrderBy | undefined;
 }
 
 /**
@@ -202,5 +202,5 @@ export interface FilterRequest {
  * together with a `range` is a `MudabValidationError`.
  */
 export interface ListRequest extends FilterRequest {
-  all?: boolean;
+  all?: boolean | undefined;
 }

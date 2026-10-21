@@ -52,27 +52,27 @@ export interface EngineOptions {
    * absolute http(s) URL without a query, fragment, surrounding whitespace or control
    * characters (`baseUrlProblem`), else a MudabValidationError.
    */
-  baseUrl?: string;
+  baseUrl?: string | undefined;
   /**
    * Swappable transport. Defaults to the built-in node http/https transport. The engine
    * enforces `timeoutMs` and `maxResponseBytes` for any transport, reads its headers in
    * any case (a fetch `Headers` or a `Map` too) and its body as any ArrayBuffer view, and
    * turns whatever it throws, or a malformed response, into a `MudabNetworkError`.
    */
-  transport?: Transport;
+  transport?: Transport | undefined;
   /**
    * Value of the User-Agent header: not blank, Latin-1 without control characters
    * (tab is fine), else a MudabValidationError.
    */
-  userAgent?: string;
+  userAgent?: string | undefined;
   /** Extra headers sent on every request; names must be tokens, values follow the `userAgent` rule. */
-  defaultHeaders?: Record<string, string>;
+  defaultHeaders?: Record<string, string> | undefined;
   /**
    * Time limit per request in milliseconds, covering the whole response body, not
    * only idle gaps (0 disables; at most MAX_TIMEOUT_MS, 2^31 - 1 ms). Enforced by the
    * engine for every transport: the request's `signal` aborts then.
    */
-  timeoutMs?: number;
+  timeoutMs?: number | undefined;
   /**
    * Number of automatic retries for transient (429/503) responses, 0..`MAX_RETRIES`
    * (10; default 2). A reset connection, a refused one, a DNS failure and a timeout are
@@ -81,26 +81,26 @@ export interface EngineOptions {
    * `Retry-After` when that is longer (up to `MAX_RETRY_AFTER_MS`; a longer one is not
    * retried, and the error names the requested wait).
    */
-  maxRetries?: number;
+  maxRetries?: number | undefined;
   /**
    * Base backoff between retries in milliseconds (grows linearly; default 200). A
    * `Retry-After` can make a wait longer, never shorter. At most `MAX_RETRY_AFTER_MS`.
    */
-  retryDelayMs?: number;
+  retryDelayMs?: number | undefined;
   /**
    * Hard cap on response body size in bytes (defends against memory exhaustion
    * from a hostile/buggy endpoint). Defaults to 100 MiB; set to 0 for no limit.
    * At most Number.MAX_SAFE_INTEGER. Enforced by the engine on the body any transport
    * returns (the default transport also stops reading early).
    */
-  maxResponseBytes?: number;
+  maxResponseBytes?: number | undefined;
   /** Injectable sleep, primarily for deterministic tests. */
-  sleep?: (ms: number) => Promise<void>;
+  sleep?: ((ms: number) => Promise<void>) | undefined;
   /**
    * Called once per retry, right before the backoff sleep, for each retried 429/503;
    * never when there is no retry. A throw is swallowed.
    */
-  onRetry?: (event: RetryEvent) => void;
+  onRetry?: ((event: RetryEvent) => void) | undefined;
 }
 
 /** What `EngineOptions.onRetry` is told about one retry. */

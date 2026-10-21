@@ -136,6 +136,10 @@ to the CLI's own. Files:
 - `client.test.ts` — endpoint routing, compartment routing, and the defensive
   `extractRows` (incl. the `V_STATION_SMALL` wrapper-key mismatch, another table's key,
   non-object rows) and the 200 error envelope.
+- `types.test.ts` — the exported option types: a consumer compiled by `tsc` with
+  `exactOptionalPropertyTypes` passes `undefined` for every optional field of `EngineOptions`,
+  `ListRequest`, `FilterRequest`, `Range`, `Filter` and `OrderBy` (each is `?: T | undefined`; it
+  starts a process, so it gets 30 s), and a runtime check that `undefined` means the default.
 - `cli.test.ts` — the full CLI via `run()` with a mocked client: paging defaults,
   `--all`, `--compartment`, the offline `compartments`, the `--user-agent`
   control-char guard, and exit codes.
