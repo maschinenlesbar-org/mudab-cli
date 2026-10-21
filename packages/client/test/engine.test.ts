@@ -143,8 +143,9 @@ test("control characters in a JSON error detail are stripped before reaching the
         const n = ch.charCodeAt(0);
         if (n <= 8 || (n >= 0x0b && n <= 0x1f) || (n >= 0x7f && n <= 0x9f)) return false;
       }
-      // The harmless text is preserved.
-      return err.message.includes("pwned") && err.message.includes("cleared");
+      // A whole escape sequence (the OSC title, the CSI) is dropped, its printable rest too
+      // (04-1); the harmless text is preserved.
+      return !err.message.includes("pwned") && !err.message.includes("[2J") && err.message.endsWith(": cleared");
     },
   );
 });
@@ -804,4 +805,26 @@ test("a misspelled option is a MudabValidationError naming it, never ignored (03
   const e = new RequestEngine({ proxy: undefined, timeoutMs: 500, transport: mt.transport } as never);
   assert.ok(await e.postJson("/STATION_SMALL", {}));
   assert.equal(mt.calls.length, 1);
+});
+
+test("server text in an API error's message is one clean line: no line break, escape sequence, bidi or invisible character (04-1)", async () => {
+  // The detail of a 502 as the sweep's mock sent it: a forged `Error:` line, an ANSI colour, an
+  // RLI…PDI pair and a zero-width space. Printed raw by a library caller (`console.error`), it
+  // forged a second line, left `[31m` behind and reordered the text.
+  const detail = "upstream down\r\nError: forged line \u001b[31mRED\u001b[0m ⁧spoof⁩ ​zw\u001b]0;title\u0007 \u009b2J end";
+  for (const status of [500, 502]) {
+    const mt = makeMockTransport(() => rawResponse(JSON.stringify({ detail }), "application/json", status));
+    const e = new RequestEngine({ maxRetries: 0, transport: mt.transport });
+    await assert.rejects(e.postJson("/STATION_SMALL", {}), (err: unknown) => {
+      assert.ok(err instanceof MudabApiError);
+      assert.equal(err.detail, "upstream down Error: forged line RED spoof zw end");
+      assert.ok(err.message.endsWith(": upstream down Error: forged line RED spoof zw end"), err.message);
+      assert.doesNotMatch(err.message, /[\r\n\u001b\u009b⁧⁩​]|\[31m|\]0;/u);
+      return true;
+    });
+  }
+  // A plain-text error body is cleaned the same way; the error's body keeps the text as it came.
+  const mt = makeMockTransport(() => rawResponse("oops\n‮evil\u001b[2J", "text/plain", 500));
+  await assert.rejects(new RequestEngine({ transport: mt.transport }).postJson("/x", {}), (err: unknown) =>
+    err instanceof MudabApiError && err.detail === "oops evil" && err.body === "oops\n‮evil\u001b[2J");
 });

@@ -15,7 +15,7 @@
 //   const water = await c.parameters({ range: { from: 0, count: 100 } }, "wasser");
 //   const cw = (await c.parameters({ all: true })).filter((p) => p.COMPT_DS === "CW"); // whole table
 
-import { RequestEngine, cleanDetail, quoteServerText, serverTextForMessage, type EngineOptions } from "./engine.js";
+import { RequestEngine, quoteServerText, serverTextForMessage, type EngineOptions } from "./engine.js";
 import { MudabApiError, MudabParseError, MudabValidationError, cutForMessage, cutText, quoteValue } from "./errors.js";
 import { assertValid, normalizeToken, tokenProblem } from "./validate.js";
 import type {
@@ -165,7 +165,8 @@ function describeShape(value: unknown): string {
   for (const key of ["detail", "message", "error"]) {
     const raw = record[key];
     if (typeof raw === "string" && raw.trim() !== "") {
-      text += ` (${key}: ${quoteServerText(cleanDetail(raw))})`;
+      // Quoted visibly, every character escaped that a reader can't see (`quoteValue`).
+      text += ` (${key}: ${quoteValue(raw.length > 200 ? `${cutText(raw, 200)}…` : raw)})`;
       break;
     }
   }

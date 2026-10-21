@@ -176,25 +176,49 @@ export function parseRetryAfter(
 /** Longest error `detail` we keep — a hostile body must not fill the terminal. */
 const MAX_DETAIL_LENGTH = 200;
 
+/** Unicode General Category Cf (format): bidi controls, zero-width characters, U+00AD, U+FEFF, … */
+const FORMAT_CHAR = /\p{Cf}/u;
+
 /**
- * Strip C0/C1 control characters (including DEL) out of a string that originates
- * in an attacker-controlled response — the error `detail`. `JSON.parse` decodes a
- * unicode escape such as backslash-u-001b in an error body into a real ESC byte,
- * so without this a hostile or MITM'd endpoint could drive ANSI/OSC escape
- * sequences into the user's terminal when the message is printed to stderr.
- * This only needs to cover text that flows into an error message: the CLI's JSON
- * output is escaped separately (`escapeControlChars` in cli/shared.ts), as
- * `JSON.stringify` alone leaves DEL and the C1 range raw. Checked by char code so
- * the source stays free of control bytes.
+ * A whole terminal escape sequence: a CSI (`ESC [` or the 8-bit U+009B, parameters,
+ * intermediates, final byte), a terminated control string (OSC/DCS/SOS/PM/APC, `ESC ]` …
+ * up to BEL or ST, or their 8-bit forms) or a short `ESC` sequence. Dropping only the
+ * control bytes left the printable rest behind (`ESC [31m` became `[31m`). An unterminated
+ * control string is left to the per-character filter, so it cannot swallow the rest of the
+ * message. Written with escapes, so the source holds no control bytes.
+ */
+const ESCAPE_SEQUENCE =
+  /(?:\u001b\[|\u009b)[\u0030-\u003f]*[\u0020-\u002f]*[\u0040-\u007e]|(?:\u001b[\]PX^_]|[\u0090\u0098\u009d-\u009f])[^\u0007\u001b\u009c]*(?:\u0007|\u001b\\|\u009c)|\u001b[\u0020-\u002f]*[\u0030-\u007e]/g;
+
+/**
+ * Make a string that originates in an attacker-controlled response — an error `detail`, a
+ * plain-text error body, a transport's error text, a redirect target — safe for one of the
+ * client's own messages, which a library caller may print as it is (`console.error(err.message)`):
+ *
+ * - Whole escape sequences (CSI, OSC and other control strings) are dropped first, then any
+ *   remaining C0 and C1 controls and DEL. `JSON.parse` decodes a JSON-escaped ESC into a real
+ *   ESC byte; printed raw, a hostile or MITM'd endpoint could drive ANSI/OSC sequences into
+ *   the terminal.
+ * - Unicode format characters (General Category Cf) are dropped: the bidi controls
+ *   (isBidiControl), so server text cannot reorder the visible message, and the invisible
+ *   ones — zero-width space/joiners, word joiner, soft hyphen, BOM.
+ * - Every run of whitespace — line breaks, tabs, U+2028/U+2029 included — becomes one space
+ *   and the ends are trimmed, so the text stays on one line and a server cannot forge an
+ *   `Error:` line of its own.
+ *
+ * The CLI's JSON output is escaped separately (`escapeControlChars` in cli/shared.ts), as
+ * `JSON.stringify` alone leaves DEL, C1 and bidi characters raw. Checked by char code so the
+ * source stays free of control bytes.
  */
 export function sanitizeServerText(text: string): string {
   let out = "";
-  for (const ch of text) {
+  for (const ch of text.replace(ESCAPE_SEQUENCE, "")) {
     const n = ch.codePointAt(0) ?? 0;
-    if (n <= 8 || (n >= 0x0b && n <= 0x1f) || (n >= 0x7f && n <= 0x9f)) continue;
+    const whitespaceControl = n >= 0x09 && n <= 0x0d;
+    if (!whitespaceControl && (n <= 0x1f || (n >= 0x7f && n <= 0x9f) || FORMAT_CHAR.test(ch))) continue;
     out += ch;
   }
-  return out;
+  return out.replace(/\s+/g, " ").trim();
 }
 
 /**

@@ -264,7 +264,13 @@ to the CLI's own. Files:
   must be an object (`null` is none) with only the `EngineOptions` names (`assertKnownOptions`:
   a misspelled `timeout` for `timeoutMs` is `Invalid options: unknown option "timeout" (did you
   mean timeoutMs?).`, not silently the default; a key set to `undefined` passes), `transport`,
-  `sleep`, `onRetry` and `onWarning` functions, `defaultHeaders` an object. Echoed values and server text are cut at 500 characters (`cutForMessage`,
+  `sleep`, `onRetry` and `onWarning` functions, `defaultHeaders` an object. Server text an own
+  message carries as text — an error `detail`, a plain-text error body, a transport's error text,
+  a redirect target — goes through `sanitizeServerText` (exported from `engine.ts`): whole escape
+  sequences (CSI, OSC and other control strings) dropped, then C0, C1, DEL and every format
+  character (bidi controls, zero-width characters, the soft hyphen), and whitespace folded to one
+  space, so `err.message` is one clean line a library caller can print as it is (a forged
+  `Error:` line, `[31m` remnants or a live RLI can't get through). Echoed values and server text are cut at 500 characters (`cutForMessage`,
   `MAX_MESSAGE_VALUE_LENGTH`, exported), and so is every other value an own message quotes
   (a transport's error text, a redirect target — `location` keeps it whole —, a header name,
   a base URL's scheme), so `err.message` stays bounded for a library caller; every cut is made by `cutText` (exported), which never

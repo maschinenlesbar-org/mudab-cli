@@ -151,7 +151,7 @@ test("a 200 error envelope's text is quoted on one line, without control or bidi
   const hostileClient = clientFor({ error: hostile }).client;
   await assert.rejects(hostileClient.stations(), (err) => {
     assert.ok(err instanceof MudabApiError);
-    assert.equal(err.detail, "the server answered with an error instead of rows: a b c[31m d2J e f ghijklm");
+    assert.equal(err.detail, "the server answered with an error instead of rows: a b c d e f ghijklm");
     return true;
   });
 });
