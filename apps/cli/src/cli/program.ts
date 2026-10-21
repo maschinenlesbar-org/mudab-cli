@@ -10,7 +10,7 @@ import { defaultIO } from "./io.js";
 import { MudabClient } from "@maschinenlesbar.org/mudab-client/internal/client";
 import { MAX_TIMEOUT_MS } from "@maschinenlesbar.org/mudab-client/internal/http";
 import { DEFAULT_BASE_URL, MAX_RETRIES } from "@maschinenlesbar.org/mudab-client/internal/engine";
-import { parseIntArg, parseBoundedInt, parseHeaderValue, parseBaseUrl } from "./shared.js";
+import { forbidRepeatedOptions, parseIntArg, parseBoundedInt, parseHeaderValue, parseBaseUrl } from "./shared.js";
 import { registerCommands } from "./commands/list.js";
 import { DEFAULT_LOG_FORMAT, logFormatProblem } from "./log.js";
 
@@ -92,6 +92,8 @@ export function buildProgram(deps: CliDeps = defaultDeps): Command {
     .showHelpAfterError();
 
   registerCommands(program, deps);
+  // A single-value option given twice is a usage error, never "the last one wins".
+  forbidRepeatedOptions(program);
 
   return program;
 }

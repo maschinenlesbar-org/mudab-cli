@@ -78,6 +78,29 @@ export function parseBaseUrl(value: string): string {
   return value;
 }
 
+/**
+ * Make every single-value option of `command` and its subcommands a usage error when given
+ * twice (`--x may be given only once.`, exit 2, no request), instead of commander's "the last
+ * one wins": `--timeout 5 … --timeout 60` silently ran with 60. Flags (no value) may repeat. An
+ * option meant to be repeated is declared with an array default
+ * (`.option("--tag <t>", …, collect, [])`): each value adds to the list. Call it once on a
+ * freshly built program: the check counts per Option object.
+ */
+export function forbidRepeatedOptions(command: Command): void {
+  for (const option of command.options) {
+    if ((!option.required && !option.optional) || option.variadic || Array.isArray(option.defaultValue)) continue;
+    const parse = option.parseArg;
+    let given = false;
+    const guarded = (value: string, previous: unknown): unknown => {
+      if (given) throw new InvalidArgumentError(`${option.long ?? option.short} may be given only once.`);
+      given = true;
+      return parse === undefined ? value : parse(value, previous);
+    };
+    option.parseArg = guarded as typeof option.parseArg;
+  }
+  for (const child of command.commands) forbidRepeatedOptions(child);
+}
+
 export interface GlobalOptions {
   baseUrl?: string;
   timeout?: number;

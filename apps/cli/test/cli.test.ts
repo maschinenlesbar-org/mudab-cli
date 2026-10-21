@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { run } from "../src/cli/run.js";
 import { MudabClient } from "@maschinenlesbar.org/mudab-client/internal/client";
 import type { CliDeps } from "../src/cli/io.js";
-import { renderJson } from "../src/cli/shared.js";
+import { forbidRepeatedOptions, renderJson } from "../src/cli/shared.js";
+import { buildProgram } from "../src/cli/program.js";
 import { MudabError, credentialsIn } from "@maschinenlesbar.org/mudab-client/internal/errors";
 import type { HttpRequest, HttpResponse } from "@maschinenlesbar.org/mudab-client/internal/http";
 import { makeMockTransport, jsonResponse, jsonBodyOf, rawResponse, untimed } from "./helpers.js";
@@ -399,4 +400,40 @@ test("the log format is the one commander parsed, not what an option's value loo
   const ua = makeCli(() => jsonResponse({ message: "boom" }, 500));
   assert.notEqual(await run(["--user-agent", "--log-format=jsonl", "stations"], ua.deps), 0);
   assert.ok(ua.err.length > 0 && ua.err.every((line) => !line.startsWith("{")), ua.err.join("\n"));
+});
+
+test("a single-value option given twice is a usage error before any request, never 'the last one wins'", async () => {
+  for (const [option, argv] of [
+    ["--timeout", ["--timeout", "5", "--timeout", "6", "stations"]],
+    ["--timeout", ["--timeout=5", "stations", "--timeout", "6"]],
+    ["--base-url", ["--base-url", "http://127.0.0.1:9/a", "--base-url", "http://127.0.0.1:9/b", "stations"]],
+    ["--log-format", ["--log-format", "text", "--log-format=jsonl", "stations"]],
+    ["--log-format", ["stations", "--log-format", "jsonl", "--log-format", "jsonl"]],
+    ["--user-agent", ["--user-agent", "a", "--user-agent", "b", "stations"]],
+    ["--max-retries", ["--max-retries", "1", "--max-retries", "2", "stations"]],
+    ["--max-response-bytes", ["--max-response-bytes", "1", "--max-response-bytes", "2", "stations"]],
+    ["--from", ["stations", "--from", "1", "--from", "2"]],
+    ["--count", ["measurements", "--count", "1", "--count=2"]],
+    ["--compartment", ["parameters", "--compartment", "wasser", "--compartment", "biota"]],
+  ] as const) {
+    const cli = makeCli(() => jsonResponse(fx.stations));
+    assert.equal(await run([...argv], cli.deps), 2, argv.join(" "));
+    assert.equal(cli.mt.calls.length, 0, `${argv.join(" ")} sent a request`);
+    assert.match(cli.err.join("\n"), new RegExp(`${option} may be given only once\\.`), argv.join(" "));
+  }
+  // Flags may repeat.
+  const flags = makeCli(() => jsonResponse(fx.stations));
+  assert.equal(await run(["--compact", "--compact", "stations", "--all", "--all"], flags.deps), 0);
+});
+
+test("an option with an array default is repeatable: each value adds to the list", async () => {
+  const program = buildProgram(makeCli(() => jsonResponse(fx.stations)).deps);
+  const seen: string[][] = [];
+  program
+    .command("collect")
+    .option("--tag <t>", "repeatable", (value: string, previous: string[]) => [...previous, value], [] as string[])
+    .action((opts: { tag: string[] }) => void seen.push(opts.tag));
+  forbidRepeatedOptions(program);
+  await program.parseAsync(["collect", "--tag", "a", "--tag", "b"], { from: "user" });
+  assert.deepEqual(seen, [["a", "b"]]);
 });

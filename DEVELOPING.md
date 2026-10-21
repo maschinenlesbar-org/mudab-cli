@@ -171,6 +171,11 @@ to the CLI's own. Files:
   (`module: NodeNext`). Keep passing on Node 22/24 (`engines`: `>=22.12`, the floor of
   `commander` 15).
 - **Exit codes** (`run.ts`): help/version → 0; usage → 2; 404 → 4; network → 6; other → 1.
+- **One value per option** (`forbidRepeatedOptions`, `shared.ts`, run by `buildProgram` over the
+  whole tree): a single-value option given twice is a usage error (`--x may be given only
+  once.`, exit 2, no request), never commander's "the last one wins". Flags may repeat. An
+  option meant to be repeated would be declared with an array default (`collect, []`); there
+  is none today.
 - **Retry/backoff:** transient `429`/`503` retried up to `maxRetries`. The linear
   backoff (`retryDelayMs * attempt`) is the floor; a `Retry-After` (delay-seconds or an
   IMF-fixdate, parsed strictly by `parseRetryAfter`) can only lengthen a wait, up to
