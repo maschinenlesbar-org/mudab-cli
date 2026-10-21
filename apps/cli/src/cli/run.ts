@@ -5,6 +5,7 @@
 import { CommanderError, type Command } from "commander";
 import { buildProgram, defaultDeps } from "./program.js";
 import { logOf, type CliDeps } from "./io.js";
+import { OutputError } from "./shared.js";
 import { DEFAULT_LOG_FORMAT, createLogger, logFormatFromArgv, type LogFormat, type Logger } from "./log.js";
 import { DEFAULT_BASE_URL } from "@maschinenlesbar.org/mudab-client/internal/engine";
 import {
@@ -293,6 +294,11 @@ export async function run(argv: string[], deps: CliDeps = defaultDeps): Promise<
         );
       }
       return EXIT.NETWORK;
+    }
+    if (err instanceof OutputError) {
+      // The answer arrived but could not be printed (too deep, too large).
+      log.error("output", err.message);
+      return EXIT.OTHER;
     }
     if (err instanceof MudabError) {
       log.error(areaOf(err), err.message);

@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { run } from "../src/cli/run.js";
 import { MudabClient } from "@maschinenlesbar.org/mudab-client/internal/client";
 import type { CliDeps } from "../src/cli/io.js";
-import { forbidRepeatedOptions, renderJson } from "../src/cli/shared.js";
+import { OutputError, forbidRepeatedOptions, renderJson } from "../src/cli/shared.js";
 import { buildProgram } from "../src/cli/program.js";
-import { MudabError, credentialsIn } from "@maschinenlesbar.org/mudab-client/internal/errors";
+import { credentialsIn } from "@maschinenlesbar.org/mudab-client/internal/errors";
 import type { HttpRequest, HttpResponse } from "@maschinenlesbar.org/mudab-client/internal/http";
 import { makeMockTransport, jsonResponse, jsonBodyOf, rawResponse, untimed } from "./helpers.js";
 import * as fx from "@maschinenlesbar.org/mudab-client/test/fixtures";
@@ -268,20 +268,26 @@ test("--user-agent: blank or non-Latin-1 is a usage error; tab and Latin-1 pass"
   assert.equal(ok.mt.last().headers?.["User-Agent"], "m\u00fcdab\t1");
 });
 
-test("a deeply nested response fails cleanly instead of overflowing the stack", async () => {
+test("an answer nested too deeply is a clean error; it suggests --compact only where --compact prints it (D7)", async () => {
+  // A hostile or broken answer: JSON.parse reads it, the pretty printer's recursion can't. Whether
+  // the compact printer can depends on the Node version (iterative from Node 26) and the stack:
+  // probed here, never assumed.
   const depth = 200_000;
   const body = `{"V_STATION_SMALL":[{"R":${"[".repeat(depth)}${"]".repeat(depth)}}]}`;
+  let compactPrints = true;
+  try {
+    JSON.stringify(JSON.parse(body));
+  } catch {
+    compactPrints = false;
+  }
   const pretty = makeCli(() => rawResponse(body, "application/json"));
   assert.equal(await run(["stations"], pretty.deps), 1);
-  assert.deepEqual(pretty.err.map(untimed), ["ERROR [mudab.cli] The response is nested too deeply to pretty-print; try --compact."]);
-
+  assert.deepEqual(pretty.err.map(untimed), [
+    `ERROR [mudab.output] The answer is nested too deeply to pretty-print${compactPrints ? "; try --compact" : ""}.`,
+  ]);
   const compact = makeCli(() => rawResponse(body, "application/json"));
-  const code = await run(["--compact", "stations"], compact.deps);
-  // The compact form may fit on the stack; if it does not, the message is clean too.
-  if (code !== 0) {
-    assert.equal(code, 1);
-    assert.deepEqual(compact.err.map(untimed), ["ERROR [mudab.cli] The response is nested too deeply to print."]);
-  }
+  assert.equal(await run(["--compact", "stations"], compact.deps), compactPrints ? 0 : 1);
+  if (!compactPrints) assert.deepEqual(compact.err.map(untimed), ["ERROR [mudab.output] The answer is nested too deeply to print."]);
 });
 
 test("--compact takes the gap path only for an answer holding a huge string, the fast path otherwise", (t) => {
@@ -304,20 +310,32 @@ test("--compact takes the gap path only for an answer holding a huge string, the
   assert.deepEqual(out, ['"stub"', '"stub"', '"stub"', '"stub"', '"stub"']);
 });
 
-test("an output too large for one string is reported as such, not as nesting", () => {
-  // Stands in for a ~450 MB table: JSON.stringify throws V8's "Invalid string length".
-  const huge = { toJSON: () => { throw new RangeError("Invalid string length"); } };
+test("an answer too large to print is called too large, not too deep; the hint only where --compact prints (D7)", (t) => {
   const deps: CliDeps = { io: { out: () => {}, err: () => {} }, createClient: () => new MudabClient() };
-  assert.throws(
-    () => renderJson(deps, {}, huge),
-    (err) =>
-      err instanceof MudabError &&
-      /^The output is too large to build as one string .*; try --compact, which is smaller, or page it with --from\/--count\.$/.test(err.message),
-  );
-  assert.throws(
-    () => renderJson(deps, { compact: true }, huge),
-    (err) => err instanceof MudabError && /too large to build as one string .*; page it with --from\/--count\.$/.test(err.message),
-  );
+  const real = JSON.stringify;
+  // V8's own error for a text past its longest string, stood in for: a real one needs 512 MB.
+  t.mock.method(JSON, "stringify", (value: unknown, replacer: never, gap: unknown) => {
+    if (gap === 2 || (gap === undefined && (value as { all?: boolean }).all === true)) throw new RangeError("Invalid string length");
+    return real(value, replacer, gap as number);
+  });
+  assert.throws(() => renderJson(deps, {}, { id: "a1" }), (err: Error) =>
+    err instanceof OutputError &&
+    /^The answer is too large \(more than \d+ characters of JSON\) to pretty-print; try --compact, or page it with --from\/--count\.$/.test(err.message));
+  assert.throws(() => renderJson(deps, {}, { all: true }), (err: Error) =>
+    /^The answer is too large \(more than \d+ characters of JSON\) to pretty-print; page it with --from\/--count\.$/.test(err.message));
+  assert.throws(() => renderJson(deps, { compact: true }, { all: true }), (err: Error) =>
+    /^The answer is too large \(more than \d+ characters of JSON\) to print; page it with --from\/--count\.$/.test(err.message));
+});
+
+test("holdsHugeString walks a large flat answer without an allocation per value", (t) => {
+  // Object.entries made a pair per element: 7 GB and a crash on 48M numbers. Pinned here by the
+  // path taken: an array of numbers and plain rows goes the fast path, no entries are made.
+  const entries = t.mock.method(Object, "entries");
+  const out: string[] = [];
+  const deps: CliDeps = { io: { out: (s) => out.push(s), err: () => {} }, createClient: () => new MudabClient() };
+  renderJson(deps, { compact: true }, [{ a: 1, b: [2, 3] }, { c: "x" }]);
+  assert.equal(entries.mock.callCount(), 0);
+  assert.deepEqual(out, ['[{"a":1,"b":[2,3]},{"c":"x"}]']);
 });
 
 test("an a:b@c argument (a User-Agent, a typed value) is neither a credential in the log nor rewritten in the JSON on stdout (L14)", async () => {

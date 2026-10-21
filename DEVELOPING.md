@@ -307,10 +307,14 @@ to the CLI's own. Files:
   the caller as a `MudabNetworkError` (the original, scrubbed, as `cause`).
 - **Printing JSON** (`renderJson`, `shared.ts`): `escapeControlChars` writes the characters
   `JSON.stringify` leaves raw although a terminal acts on them — DEL, C1 (U+0080–U+009F) and the
-  bidi controls (`isBidiControl`, exported from `engine.ts`) — as `\uXXXX`. Pretty by default; an answer nested too deeply
-  to pretty-print is an ERROR record of `mudab.cli` suggesting `--compact`, one too large for a
-  string suggests paging. `--compact` takes V8's fast path (`JSON.stringify(value)`) unless the
-  answer holds a string or key of 64 Mi characters or more (`holdsHugeString`), which goes
+  bidi controls (`isBidiControl`, exported from `engine.ts`) — as `\uXXXX`. Pretty by default. An answer that can't be printed is an
+  `OutputError`, an ERROR record of `mudab.output` (exit 1) that names the cause, never a stack
+  trace: "nested too deeply" (the stack overflowed) or "too large (more than 536870888 characters
+  of JSON)" (V8's longest string, `Invalid string length`), which adds "page it with
+  --from/--count". "try --compact" is added only when the compact form of that very answer prints
+  (`compactPrints`, probed, not assumed from the Node version). `--compact` takes V8's fast path (`JSON.stringify(value)`) unless the
+  answer holds a string or key of 64 Mi characters or more (`holdsHugeString`: iterative, walks arrays by index and objects with `for…in`, no allocation
+  per value), which goes
   through the gap path (`JSON.stringify(value, null, "")`, the same text): on Node 26 the fast
   path aborts the process on a ~250 MB string, but only it prints very deep nesting there.
 - **Scaffold origin:** this repo was scaffolded from `entgeltatlas-cli`; the API-key /
@@ -357,12 +361,12 @@ forge another one or steer the terminal. Before that a lone surrogate (half a
 character, which jq rejects, stopping the whole stream) becomes U+FFFD (`toWellFormed`,
 exported from `errors.ts`), and a message longer than `MAX_RECORD_MESSAGE` (4000
 characters, exported) is cut at a code point and ends in `… (N more characters)`. The areas are `cli` (usage errors and the `--from`/`--count` range hint,
-commander's messages, unexpected errors, an output too large or nested too deeply to
-print), `api` (the API's answers: HTTP errors, an error list sent with status 200, a
+commander's messages, unexpected errors), `api` (the API's answers: HTTP errors, an error list sent with status 200, a
 malformed answer — a `MudabParseError`: bad JSON, the wrong shape, an empty body, more rows
 than asked for, an unknown charset, a number that can't be represented exactly — and the
 `--base-url` redirect hint), `http` (the connection: network errors, the size-cap hint,
-the cleartext warning) and `output` (a failed write to stdout). A failed write to stdout
+the cleartext warning) and `output` (a failed write to stdout, an answer too deeply nested or too
+large to print). A failed write to stdout
 other than a closed pipe (`handleOutputErrors`, in the bin shim, outside `run()`) is an
 ERROR record of `mudab.output` (`Could not write to stdout: …`), and the shim's
 last-resort `Unexpected error: …` an ERROR of `mudab.cli`, both in the format argv asks
