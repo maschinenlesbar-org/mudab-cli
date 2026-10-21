@@ -523,3 +523,26 @@ test("a boolean that can be switched both ways may be given only once: optional 
     assert.deepEqual(seen, [expected], argv.join(" "));
   }
 });
+
+test("--help states the 30 s default timeout, and a timeout points at --timeout (04-3)", async () => {
+  const help = makeCli(() => jsonResponse(fx.stations));
+  assert.equal(await run(["--help"], help.deps), 0);
+  assert.match(help.out.join("\n").replace(/\s+/g, " "), /--timeout <ms> time limit per request in ms, whole response included \(default 30000; 0 = no timeout\)/);
+  // A transport that answers only when aborted: the engine's deadline fires after 5 ms.
+  const out: string[] = [];
+  const err: string[] = [];
+  const deps: CliDeps = {
+    io: { out: (s) => out.push(s), err: (s) => err.push(s) },
+    createClient: (opts) =>
+      new MudabClient({
+        ...opts,
+        transport: (req) => new Promise((_, reject) => req.signal?.addEventListener("abort", () => reject(req.signal?.reason))),
+      }),
+  };
+  assert.equal(await run(["--timeout", "5", "measurements", "--all"], deps), 6);
+  assert.deepEqual(out, []);
+  assert.deepEqual(err.map(untimed), [
+    "ERROR [mudab.http] POST https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements/MV_STATION_MSMNT failed: Request timed out after 5ms",
+    "INFO  [mudab.http] The whole response must arrive within --timeout (5 ms here; default 30000). A large table (measurements --all) on a slow link needs more: raise --timeout <ms> (0 = no limit), or page with --from/--count.",
+  ]);
+});

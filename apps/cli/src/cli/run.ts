@@ -7,7 +7,7 @@ import { buildProgram, defaultDeps } from "./program.js";
 import { logOf, type CliDeps } from "./io.js";
 import { OutputError } from "./shared.js";
 import { DEFAULT_LOG_FORMAT, createLogger, logFormatFromArgv, type LogFormat, type Logger } from "./log.js";
-import { DEFAULT_BASE_URL } from "@maschinenlesbar.org/mudab-client/internal/engine";
+import { DEFAULT_BASE_URL, DEFAULT_TIMEOUT_MS } from "@maschinenlesbar.org/mudab-client/internal/engine";
 import {
   MudabApiError,
   MudabError,
@@ -324,6 +324,17 @@ export async function run(argv: string[], deps: CliDeps = defaultDeps): Promise<
           "http",
           "The response exceeded the size cap. Narrow with --from/--count " +
             "or raise --max-response-bytes <n> (0 = unlimited).",
+        );
+      }
+      // The deadline covers the whole body, so a big table on a slow link hits it: say which
+      // option sets it, and its value (04-3).
+      if (/Request timed out after \d+ms/.test(err.message)) {
+        const timeout = (program.opts() as { timeout?: number }).timeout;
+        const limit = timeout === undefined ? `${DEFAULT_TIMEOUT_MS} ms, the default` : `${timeout} ms here; default ${DEFAULT_TIMEOUT_MS}`;
+        log.info(
+          "http",
+          `The whole response must arrive within --timeout (${limit}). A large table (measurements --all) ` +
+            "on a slow link needs more: raise --timeout <ms> (0 = no limit), or page with --from/--count.",
         );
       }
       return EXIT.NETWORK;

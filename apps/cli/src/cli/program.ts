@@ -9,7 +9,7 @@ import type { CliDeps } from "./io.js";
 import { defaultIO } from "./io.js";
 import { MudabClient } from "@maschinenlesbar.org/mudab-client/internal/client";
 import { MAX_TIMEOUT_MS } from "@maschinenlesbar.org/mudab-client/internal/http";
-import { DEFAULT_BASE_URL, MAX_RETRIES } from "@maschinenlesbar.org/mudab-client/internal/engine";
+import { DEFAULT_BASE_URL, DEFAULT_TIMEOUT_MS, MAX_RETRIES } from "@maschinenlesbar.org/mudab-client/internal/engine";
 import { forbidRepeatedOptions, parseIntArg, parseBoundedInt, parseHeaderValue, parseBaseUrl } from "./shared.js";
 import { registerCommands } from "./commands/list.js";
 import { DEFAULT_LOG_FORMAT, logFormatProblem } from "./log.js";
@@ -67,7 +67,7 @@ export function buildProgram(deps: CliDeps = defaultDeps): Command {
     )
     .option(
       "--timeout <ms>",
-      "time limit per request in ms, whole response included (0 = no timeout)",
+      `time limit per request in ms, whole response included (default ${DEFAULT_TIMEOUT_MS}; 0 = no timeout)`,
       parseBoundedInt(0, MAX_TIMEOUT_MS),
     )
     .option("--user-agent <ua>", "User-Agent header value", parseHeaderValue)

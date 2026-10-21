@@ -70,7 +70,8 @@ export interface EngineOptions {
   defaultHeaders?: Record<string, string> | undefined;
   /**
    * Time limit per request in milliseconds, covering the whole response body, not
-   * only idle gaps (0 disables; at most MAX_TIMEOUT_MS, 2^31 - 1 ms). Enforced by the
+   * only idle gaps (default `DEFAULT_TIMEOUT_MS`, 30 000; 0 disables; at most MAX_TIMEOUT_MS,
+   * 2^31 - 1 ms). Enforced by the
    * engine for every transport: the request's `signal` aborts then.
    */
   timeoutMs?: number | undefined;
@@ -138,6 +139,12 @@ export interface RetryEvent {
 }
 
 const DEFAULT_MAX_RESPONSE_BYTES = 100 * 1024 * 1024;
+
+/**
+ * The default `timeoutMs`: 30 s for the whole response, body included. A whole large table
+ * (`measurements`, ~42 MB) needs a link of about 1.4 MB/s to arrive in time.
+ */
+export const DEFAULT_TIMEOUT_MS = 30_000;
 
 /**
  * Longest `Retry-After` the engine waits out before retrying a 429/503. When the
@@ -534,7 +541,7 @@ export class RequestEngine {
     this.userAgent =
       options.userAgent === undefined ? DEFAULT_USER_AGENT : assertHeaderValue("userAgent", options.userAgent);
     this.defaultHeaders = checkedHeaders(options.defaultHeaders ?? {});
-    this.timeoutMs = intOption("timeoutMs", options.timeoutMs, 30_000, MAX_TIMEOUT_MS);
+    this.timeoutMs = intOption("timeoutMs", options.timeoutMs, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
     this.maxRetries = intOption("maxRetries", options.maxRetries, 2, MAX_RETRIES);
     this.retryDelayMs = intOption("retryDelayMs", options.retryDelayMs, 200, MAX_RETRY_AFTER_MS);
     this.maxResponseBytes = intOption(

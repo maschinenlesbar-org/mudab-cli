@@ -213,7 +213,9 @@ to the CLI's own. Files:
   or ArrayBuffer as the body (`bodyBytes`), and turns a malformed response (no or a
   non-HTTP status, no headers, another body type) or anything thrown into a
   `MudabNetworkError`. The size-limit message names `maxResponseBytes` and
-  `--max-response-bytes`. Every network error names the request, like
+  `--max-response-bytes`; the default `timeoutMs` is `DEFAULT_TIMEOUT_MS` (30 000, exported, shown
+  in `--help`), for the whole response, and a timeout gets an INFO record of `mudab.http` in
+  `run.ts` naming `--timeout`, its value and the way out. Every network error names the request, like
   `POST https://***@host/…/STATION_SMALL failed: <reason>` (userinfo redacted, the URL cut at 500
   characters): a timeout, the size cap, a reset or refused connection, a DNS failure and an
   invalid transport response; the original error, scrubbed, is its `cause`.

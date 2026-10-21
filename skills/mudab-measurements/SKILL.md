@@ -81,7 +81,9 @@ mudab plc-measurements --all --compact \
 - **Download a big table once.** `measurements --all` is ~42 MB and `stations --all`
   ~9 MB (83,916 rows) on 2026-09-15; both fit the 100 MiB cap, but repeating them per
   question is slow and wasteful. If the cap is ever hit (exit 6 with a size-cap hint),
-  raise `--max-response-bytes` rather than paging hundreds of times.
+  raise `--max-response-bytes` rather than paging hundreds of times. The whole response must
+  also arrive within `--timeout` (default 30 s): on a slow link a big table fails with exit 6,
+  `Request timed out after 30000ms`; retry once with `--timeout 120000` (or `0`, no limit).
 - **`VALUE_MS` and `VALUE` are JSON numbers** (all ~187,000 `VALUE_MS` on 2026-09-15), so
   no casting is needed. `VALUE` can be `null` (38 PLC rows then) — drop nulls before sorting
   or summing.

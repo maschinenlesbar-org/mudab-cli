@@ -16,6 +16,7 @@ export type { CompartmentCode, MudabClientOptions, ParameterCompartment } from "
 export {
   RequestEngine,
   DEFAULT_BASE_URL,
+  DEFAULT_TIMEOUT_MS,
   MAX_RETRIES,
   MAX_RETRY_AFTER_MS,
   assertHeaderValue,
