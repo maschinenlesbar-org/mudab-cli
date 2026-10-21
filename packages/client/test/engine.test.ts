@@ -784,3 +784,24 @@ test("an answer longer than V8's longest string is a MudabParseError naming the 
     mock.mock.restore();
   }
 });
+
+test("a misspelled option is a MudabValidationError naming it, never ignored (03-1)", async () => {
+  // `timeout` for `timeoutMs` used to be ignored: the call ran with the 30 s default.
+  const mt = makeMockTransport(() => jsonResponse(fx.stations));
+  for (const [options, message] of [
+    [{ timeout: 500 }, 'Invalid options: unknown option "timeout" (did you mean timeoutMs?).'],
+    [{ timeoutms: 500 }, 'Invalid options: unknown option "timeoutms" (did you mean timeoutMs?).'],
+    [{ retries: 1 }, 'Invalid options: unknown option "retries" (did you mean maxRetries?).'],
+    [{ proxy: "http://p" }, 'Invalid options: unknown option "proxy"; the options are baseUrl, transport, userAgent, defaultHeaders, timeoutMs, maxRetries, retryDelayMs, maxResponseBytes, sleep, onRetry, onWarning, bigIntegerKeys.'],
+    // The name is quoted visibly.
+    [{ "ti\u200bmeout": 1 }, 'Invalid options: unknown option "ti\\u200bmeout"; the options are baseUrl, transport, userAgent, defaultHeaders, timeoutMs, maxRetries, retryDelayMs, maxResponseBytes, sleep, onRetry, onWarning, bigIntegerKeys.'],
+  ] as const) {
+    assert.throws(() => new RequestEngine({ ...options, transport: mt.transport } as never), (err: unknown) =>
+      err instanceof MudabValidationError && err.message === message, JSON.stringify(options));
+    assert.throws(() => new MudabClient({ ...options, transport: mt.transport } as never), MudabValidationError);
+  }
+  // An unset key (from a spread config) changes nothing; the known ones pass.
+  const e = new RequestEngine({ proxy: undefined, timeoutMs: 500, transport: mt.transport } as never);
+  assert.ok(await e.postJson("/STATION_SMALL", {}));
+  assert.equal(mt.calls.length, 1);
+});

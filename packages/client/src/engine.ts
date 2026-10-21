@@ -26,6 +26,7 @@ import {
   cutForMessage,
   cutText,
   echoedCredentialForms,
+  quoteValue,
   redactCredentials,
   redactSecrets,
   redactUrl,
@@ -390,6 +391,40 @@ function checkedHeaders(headers: Record<string, string>): Record<string, string>
   return out;
 }
 
+/** Every EngineOptions key, in the order the unknown-option message lists them. */
+const OPTION_NAMES = [
+  "baseUrl",
+  "transport",
+  "userAgent",
+  "defaultHeaders",
+  "timeoutMs",
+  "maxRetries",
+  "retryDelayMs",
+  "maxResponseBytes",
+  "sleep",
+  "onRetry",
+  "onWarning",
+  "bigIntegerKeys",
+] as const satisfies ReadonlyArray<keyof EngineOptions>;
+
+/**
+ * Throw for a key that is not an EngineOptions name. A JavaScript caller's typo (`timeout` for
+ * `timeoutMs`) was ignored silently and the default applied; TypeScript catches it at compile
+ * time, JavaScript does not. An unset key (`proxy: undefined` from a spread config) changes
+ * nothing and passes.
+ */
+function assertKnownOptions(options: object): void {
+  for (const [key, value] of Object.entries(options)) {
+    if (value === undefined || (OPTION_NAMES as readonly string[]).includes(key)) continue;
+    const lower = key.toLowerCase();
+    const hint = OPTION_NAMES.find((name) => name.toLowerCase().includes(lower) || lower.includes(name.toLowerCase()));
+    throw new MudabValidationError(
+      `Invalid options: unknown option ${quoteValue(key)}` +
+        (hint === undefined ? `; the options are ${OPTION_NAMES.join(", ")}.` : ` (did you mean ${hint}?).`),
+    );
+  }
+}
+
 /** No declared big-integer members (`EngineOptions.bigIntegerKeys` left out). */
 const NO_KEYS: ReadonlySet<string> = new Set();
 
@@ -445,6 +480,7 @@ export class RequestEngine {
         `Invalid options: expected an object, got ${Array.isArray(options) ? "an array" : typeof options}.`,
       );
     }
+    assertKnownOptions(options);
     // Check the base URL here, not only in the default transport: a library
     // consumer that injects a custom transport would otherwise get no gating at all,
     // and could be steered to a non-http(s) scheme. The raw value is checked, before

@@ -261,8 +261,10 @@ to the CLI's own. Files:
   (`null`/`undefined` mean no request), and `range` only `from`/`count`: a number, a
   string, an array, or an unknown key (`{ count: 5 }` outside `range`, a misspelled
   `rnage`) is rejected before any request instead of being ignored. The client options
-  must be an object (`null` is none), `transport` and `sleep` functions, `defaultHeaders`
-  an object. Echoed values and server text are cut at 500 characters (`cutForMessage`,
+  must be an object (`null` is none) with only the `EngineOptions` names (`assertKnownOptions`:
+  a misspelled `timeout` for `timeoutMs` is `Invalid options: unknown option "timeout" (did you
+  mean timeoutMs?).`, not silently the default; a key set to `undefined` passes), `transport`,
+  `sleep`, `onRetry` and `onWarning` functions, `defaultHeaders` an object. Echoed values and server text are cut at 500 characters (`cutForMessage`,
   `MAX_MESSAGE_VALUE_LENGTH`, exported), and so is every other value an own message quotes
   (a transport's error text, a redirect target — `location` keeps it whole —, a header name,
   a base URL's scheme), so `err.message` stays bounded for a library caller; every cut is made by `cutText` (exported), which never
