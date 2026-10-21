@@ -161,7 +161,11 @@ to the CLI's own. Files:
   `action()` in `shared.ts` before the client is built — so not by the offline `compartments`, which sends nothing; no base-URL variable and no secret
   but the URL's own credentials here, so those two cases are skipped) and P21 (every
   relative link in `README.md` points to a file `package.json` `files` ships, since npmjs.com
-  shows the README; other documents are linked by their GitHub URL).
+  shows the README; other documents are linked by their GitHub URL). The kit round of 2026-10-21 added P24 (an input is
+  canonicalised or refused: its adapter lists no text filter and no path id, since the CLI has
+  neither — the server ignores filters, and every endpoint is a fixed path) and P25 (a number
+  the answer can't carry exactly, or an empty answer, is exit 1 with an ERROR record of
+  `mudab.api`, checked on `stations --all`). P26 (`-o`) is not copied: there is no `-o`.
 
 ## Conventions to keep
 
