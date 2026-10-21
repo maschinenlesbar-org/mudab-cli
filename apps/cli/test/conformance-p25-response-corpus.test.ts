@@ -1,10 +1,12 @@
-// Conformance test P25 (trend analysis 2026-10-21; fix plan 2026-10-21, D4): an answer is exact,
+// Conformance test P25 (trend analysis 2026-10-21; fix plan 2026-10-21, D3 and D4): an answer is exact,
 // or it is an error. A 2xx body whose number a double can't carry (out of range, past 2^53 in any
 // written form, too small and turned into 0, or a subnormal that prints changed: 3e-324 became
 // 5e-324), and an empty one, are errors on the CLI (exit 1, an ERROR record of <bin>.api, nothing
 // on stdout) and in the library (the parse error), never a changed value or "nothing found". A
 // number a double carries (or a decimal fraction in the normal range, as JSON means it) is printed
-// as the same value. Shared across the *-cli repos; only the adapter differs.
+// as the same value. A member the repo declares as a big integer (`bigIntegerKeys`) is delivered
+// as its exact literal, as a string, whatever its size. Shared across the *-cli repos; only the
+// adapter differs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -23,6 +25,16 @@ const fromCli = (out: string): unknown => (JSON.parse(out) as Array<{ n: unknown
 const fromLib = (value: unknown): unknown => (value as Array<{ n: unknown }>)[0]?.n;
 /** The log program, as in `ERROR [<bin>.api]`. */
 const BIN = "mudab";
+/**
+ * The member names the repo's client declares as big integers (its `bigIntegerKeys`), usually
+ * none. `bigBody(key, literal)` is a 2xx body for the call above with that member set to `literal`
+ * where the client reads it; `bigFromCli`/`bigFromLib` read it back. mudab declares none (no MUDAB
+ * field is a number past 2^53).
+ */
+const BIG_INTEGER_KEYS: readonly string[] = [];
+const bigBody = (key: string, literal: string): string => `{"V_STATION_SMALL":[{"STATNAME_ST":"a1",${JSON.stringify(key)}:${literal}}]}`;
+const bigFromCli = (out: string, key: string): unknown => (JSON.parse(out) as Array<Record<string, unknown>>)[0]?.[key];
+const bigFromLib = (value: unknown, key: string): unknown => (value as Array<Record<string, unknown>>)[0]?.[key];
 /** The exit code of a malformed answer in this repo (most repos use 1). */
 const PARSE_EXIT = 1;
 // --------------------------------------------------------------------------------------
@@ -73,4 +85,21 @@ test("P25: an empty answer is an error, never 'nothing found'", async () => {
     assert.match(o.cli.err, new RegExp(`^ERROR \\[${BIN}\\.api\\] `), JSON.stringify(raw));
     assert.equal(o.lib.ok, false, JSON.stringify(raw));
   }
+});
+
+test("P25: a declared big-integer member is its exact literal as a string; an undeclared one is refused", async () => {
+  for (const key of BIG_INTEGER_KEYS) {
+    for (const literal of ["1858054135406919680", "5", "-12345678901234567890", "0"]) {
+      const o = await parity(argv, (t) => lib(new Client({ transport: t })), () => rawResponse(bigBody(key, literal), "application/json"));
+      assert.equal(o.cli.code, 0, `${key} ${literal}: ${o.cli.err}`);
+      assert.equal(bigFromCli(o.cli.out, key), literal, `${key} ${literal}`);
+      assert.equal(o.lib.ok, true, `${key} ${literal}`);
+      assert.equal(bigFromLib(o.lib.value, key), literal, `${key} ${literal}`);
+    }
+  }
+  // Nothing else is declared by accident: Solr's `_version_` (unless the repo declares it) is refused.
+  const undeclared = ["_version_", "n"].find((key) => !BIG_INTEGER_KEYS.includes(key)) ?? "n";
+  const o = await parity(argv, (t) => lib(new Client({ transport: t })), () => rawResponse(bigBody(undeclared, "1858054135406919680"), "application/json"));
+  assert.equal(o.cli.code, PARSE_EXIT, o.cli.out);
+  assert.equal(o.lib.ok, false);
 });

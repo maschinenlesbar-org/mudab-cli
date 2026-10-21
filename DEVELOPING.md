@@ -210,8 +210,8 @@ to the CLI's own. Files:
   range into Infinity (printed as `null`), rounds one past 2^53 (`12345678901234567890`, also as
   `…890.0`, `9007199254740993e0`, `9007199254740992.5`), turns a non-zero one too small
   (`1e-400`) into 0 and a subnormal into the nearest one it can hold (`3e-324` into `5e-324`), all
-  silently. `postJson` scans the text after parsing
-  (`firstInexactNumber`, `exactAtTheEdges` in `engine.ts`) and makes such an answer a
+  silently. `postJson` scans the text once before parsing
+  (`scanNumbers`, `exactAtTheEdges` in `engine.ts`; it skips strings) and makes such an answer a
   `MudabParseError` (exit 1): `Unexpected response from <path>: the number <N> cannot be
   represented exactly.` Past 2^53 the check compares the number as written with the number as
   printed (`String(value)`, `decimalOf`): `1E23` or `1.7976931348623157E308`, a double a server
@@ -220,7 +220,11 @@ to the CLI's own. Files:
   digits: `5e-324` and `1e-310` pass, `3e-324` is refused. Between those, below 2^53, a decimal fraction keeps a double's precision, as JSON means
   it, so the measured values (`VALUE_MS`, `VALUE`) pass as they are; no MUDAB field is a number
   past 2^53 (ids are small integers). `extractRows` still refuses a non-finite field in rows a
-  library caller hands it.
+  library caller hands it. The one exception is the engine option `bigIntegerKeys` (a set or list
+  of non-empty member names, copied; default none, and mudab declares none): the number value of a
+  declared member is delivered as its exact literal, as written, as a JSON string
+  (`"1858054135406919680"`, `"5"`), whatever its size, so its type is stable. The same scan quotes
+  those values in place before `JSON.parse` (no reviver); P25 checks it with `BIG_INTEGER_KEYS`.
 - **Bodies are decoded by their declared charset** (`decodeBody` in `engine.ts`):
   `TextDecoder` with the Content-Type's `charset` (UTF-8 when none is named; the live
   API declares `application/json;charset=UTF-8`), a leading byte order mark dropped. An

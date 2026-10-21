@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { RequestEngine, assertHeaderValue, cleartextProblem, parseRetryAfter } from "../src/engine.js";
+import { RequestEngine, assertHeaderValue, bigIntegerKeysOption, cleartextProblem, firstInexactNumber, parseRetryAfter, scanNumbers } from "../src/engine.js";
 import { headerNameProblem, headerValueProblem } from "../src/validate.js";
 import { MudabApiError, MudabNetworkError, MudabParseError, MudabValidationError, cutText, redactUrl, toWellFormed } from "../src/errors.js";
 import { MudabClient } from "../src/client.js";
@@ -666,4 +666,41 @@ test("a header named __proto__ is an ordinary header, never the prototype of the
   const fetchLike = new Headers([["__proto__", "x"], ["content-type", "application/json"]]);
   const f = new RequestEngine({ transport: async () => ({ status: 200, headers: fetchLike as unknown as Record<string, string>, body: Buffer.from('{"a":1}') }) });
   assert.deepEqual(await f.postJson("/x", {}), { a: 1 });
+});
+
+test("bigIntegerKeys: a declared member's number is its exact literal as a string; others keep the rule (D3)", async () => {
+  const body = '{"_version_":1858054135406919680,"small":{"_version_":5},"neg":{"\\u005fversion_":-12345678901234567890},' +
+    '"s":{"_version_":"text"},"n":{"_version_":null},"arr":{"_version_":[1]},"t":"\\"_version_\\":1","n2":42}';
+  const e = new RequestEngine({
+    bigIntegerKeys: new Set(["_version_"]),
+    transport: makeMockTransport(() => rawResponse(body, "application/json")).transport,
+  });
+  assert.deepEqual(await e.postJson("/x", {}), {
+    _version_: "1858054135406919680", small: { _version_: "5" }, neg: { _version_: "-12345678901234567890" },
+    s: { _version_: "text" }, n: { _version_: null }, arr: { _version_: [1] }, t: '"_version_":1', n2: 42,
+  });
+  assert.deepEqual([...e.bigIntegerKeys], ["_version_"]);
+  // An undeclared big number is still refused; a declared member doesn't make others exact.
+  const other = new RequestEngine({
+    bigIntegerKeys: ["_version_"] as unknown as ReadonlySet<string>,
+    transport: makeMockTransport(() => rawResponse('{"_version_":1858054135406919680,"id":12345678901234567890}', "application/json")).transport,
+  });
+  await assert.rejects(other.postJson("/x", {}), /the number 12345678901234567890 cannot be represented exactly/);
+  // Malformed stays malformed: a declared member with a leading zero still fails JSON.parse.
+  const malformed = new RequestEngine({ bigIntegerKeys: new Set(["_version_"]), transport: makeMockTransport(() => rawResponse('{"_version_":01}', "application/json")).transport });
+  await assert.rejects(malformed.postJson("/x", {}), (err: unknown) => err instanceof MudabParseError && /JSON/.test(err.message));
+  for (const bad of [new Set([""]), new Set([1]), "x", 5, null]) {
+    assert.throws(() => new RequestEngine({ bigIntegerKeys: bad as unknown as ReadonlySet<string> }),
+      (err: unknown) => err instanceof MudabValidationError && err.message === "Invalid option bigIntegerKeys: expected a set of non-empty member names.");
+  }
+  // The option reader copies a set or a list; undefined is none.
+  const names = new Set(["a"]);
+  const copy = bigIntegerKeysOption(names);
+  names.add("b");
+  assert.deepEqual([...copy], ["a"]);
+  assert.deepEqual([...bigIntegerKeysOption(["x", "y"] as unknown as ReadonlySet<string>)], ["x", "y"]);
+  assert.equal(bigIntegerKeysOption(undefined).size, 0);
+  // Without declarations the scan is the plain number check.
+  assert.equal(firstInexactNumber('{"a":"1e400","b":3e-324}'), "3e-324");
+  assert.deepEqual(scanNumbers('{"a":1}'), { json: '{"a":1}', inexact: undefined });
 });
