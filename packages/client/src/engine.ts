@@ -578,6 +578,15 @@ export class RequestEngine {
   }
 
   /**
+   * The request URL as error messages show it: absolute (so a message names the host that gave
+   * a bad answer, which matters with a custom base URL), userinfo redacted and cut at
+   * MAX_MESSAGE_VALUE_LENGTH characters.
+   */
+  describeUrl(path: string): string {
+    return cutForMessage(redactUrl(this.buildUrl(path)));
+  }
+
+  /**
    * Perform a request with Accept negotiation and transient-error retries.
    *
    * Redirects are deliberately NOT followed: the canonical host answers directly,
@@ -670,14 +679,18 @@ export class RequestEngine {
    * answers with a JSON document, so an empty body (or a 204) is a
    * `MudabParseError`, not an empty result, and so is a number JSON.parse cannot carry
    * exactly (`firstInexactNumber`): out of a double's range, past 2^53 in any written form,
-   * or non-zero and too small, which would print as `null`, a rounded value or 0.
+   * or non-zero and too small, which would print as `null`, a rounded value or 0. Every error
+   * about the answer names the request (`POST <url>: …`, userinfo redacted).
    */
   async postJson<T>(path: string, payload: unknown): Promise<T> {
     const body = Buffer.from(JSON.stringify(payload ?? {}), "utf8");
     const res = await this.request("POST", path, { accept: "application/json", body });
-    const text = decodeBody(res.data, res.contentType, path);
+    const request = `POST ${this.describeUrl(path)}`;
+    const text = decodeBody(res.data, res.contentType, request);
     if (res.status === 204 || text.trim().length === 0) {
-      throw new MudabParseError(`Empty response body from ${path}`);
+      // A broken answer, not "no rows": printed as nothing with exit 0, it would let a script
+      // carry on as if the table were empty.
+      throw new MudabParseError(`${request}: empty response body.`);
     }
     // Declared big integers are quoted first, so JSON.parse delivers them exactly.
     const { json, inexact } = scanNumbers(text, this.bigIntegerKeys);
@@ -685,13 +698,13 @@ export class RequestEngine {
     try {
       parsed = JSON.parse(json) as T;
     } catch (cause) {
-      throw new MudabParseError(this.parseFailure(path, res, text, cause), { cause: this.scrubCause(cause) });
+      throw new MudabParseError(this.parseFailure(request, res, text, cause), { cause: this.scrubCause(cause) });
     }
     // JSON.parse rounds and overflows numbers silently: refuse the answer rather than print a
     // changed value.
     if (inexact !== undefined) {
       throw new MudabParseError(
-        `Unexpected response from ${path}: the number ${cutForMessage(inexact)} cannot be represented exactly.`,
+        `${request}: the number ${cutForMessage(inexact)} cannot be represented exactly.`,
       );
     }
     return parsed;
@@ -701,9 +714,9 @@ export class RequestEngine {
    * Why a body is not JSON, for the parse error: the parser's reason, the content type and
    * size, and how the body starts (an HTML maintenance page, a byte-order mark, truncation),
    * all from server text, so control characters are stripped, the parser's reason folded to
-   * one line, credentials scrubbed and the whole cut. "Failed to parse JSON" alone left the user guessing.
+   * one line, credentials scrubbed and the whole cut. "Not valid JSON" alone left the user guessing.
    */
-  private parseFailure(path: string, res: RawResponse, text: string, cause: unknown): string {
+  private parseFailure(request: string, res: RawResponse, text: string, cause: unknown): string {
     // V8's reason quotes the body's first characters raw (`"<html>\r\n<h"... is not valid
     // JSON`): fold their line breaks, so the message stays one line.
     const reason = serverTextForMessage(cause instanceof Error ? cause.message : String(cause), MAX_MESSAGE_VALUE_LENGTH);
@@ -716,7 +729,7 @@ export class RequestEngine {
     return cutForMessage(
       sanitizeServerText(
         this.scrub(
-          `Failed to parse JSON response from ${path}: ${reason}. The reply (${contentType}, ` +
+          `${request}: the answer is not valid JSON: ${reason}. The reply (${contentType}, ` +
             `${res.data.byteLength} bytes) starts with ${quoteServerText(start)}.${kind}`,
         ),
       ),
@@ -778,15 +791,15 @@ const MAX_STRING_LENGTH = bufferConstants.MAX_STRING_LENGTH;
  * leading byte order mark, which Buffer#toString keeps and JSON.parse then rejects, so
  * a BOM added by a proxy cannot turn a valid answer into a parse error; a Latin-1 body
  * declared as such keeps its umlauts and `µ` instead of turning them into U+FFFD. An
- * unknown charset label is a MudabParseError.
+ * unknown charset label is a MudabParseError naming `request` (`POST <url>`).
  */
-function decodeBody(body: Buffer, contentType: string, path: string): string {
+function decodeBody(body: Buffer, contentType: string, request: string): string {
   const charset = /;\s*charset\s*=\s*"?([^";\s]+)"?/i.exec(contentType)?.[1] ?? "utf-8";
   let decoder: TextDecoder;
   try {
     decoder = new TextDecoder(charset);
   } catch {
-    throw new MudabParseError(`Unsupported response charset "${cutText(sanitizeServerText(charset), 100)}" from ${path}.`);
+    throw new MudabParseError(`${request}: unsupported response charset "${cutText(sanitizeServerText(charset), 100)}".`);
   }
   try {
     return decoder.decode(body);
@@ -795,9 +808,9 @@ function decodeBody(body: Buffer, contentType: string, path: string): string {
     // maxResponseBytes allows: say so, instead of a raw ERR_STRING_TOO_LONG outside the
     // MudabError hierarchy ("Unexpected error" on the CLI).
     throw new MudabParseError(
-      `The response from ${path} (${body.byteLength} bytes) is too large to process: Node.js can't ` +
-        `hold more than ${MAX_STRING_LENGTH} characters of text (about 512 MiB) in one string, whatever ` +
-        `maxResponseBytes allows. Fetch it in pages (range; --from/--count on the CLI).`,
+      `${request}: the answer is too large to read as text (${body.byteLength} bytes; the longest ` +
+        `string is ${MAX_STRING_LENGTH} characters, whatever maxResponseBytes allows). Fetch it in ` +
+        `pages (range; --from/--count on the CLI).`,
       { cause },
     );
   }

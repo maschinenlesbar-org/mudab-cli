@@ -174,10 +174,12 @@ function describeShape(value: unknown): string {
  * 200, another table's rows, a second key, `null`, a string, a row that is not an
  * object — throws a `MudabParseError` naming what came back, so a server-side failure
  * never reads as data or as an empty result. (The client's list methods report an error
- * envelope as a `MudabApiError` with its messages before this runs.)
+ * envelope as a `MudabApiError` with its messages before this runs.) The message starts with
+ * `request`, the request the answer came from (`POST <url>`, userinfo redacted; the client
+ * passes it), by default `POST <path>`.
  */
-export function extractRows<T>(res: unknown, path = "the API"): T[] {
-  const key = Object.hasOwn(WRAPPER_KEYS, path) ? WRAPPER_KEYS[path] : undefined;
+export function extractRows<T>(res: unknown, path?: string, request = path === undefined ? "The answer" : `POST ${path}`): T[] {
+  const key = path !== undefined && Object.hasOwn(WRAPPER_KEYS, path) ? WRAPPER_KEYS[path] : undefined;
   let rows: unknown;
   if (Array.isArray(res)) rows = res;
   else if (isRecord(res)) {
@@ -187,14 +189,14 @@ export function extractRows<T>(res: unknown, path = "the API"): T[] {
   }
   const expected = `expected a JSON object wrapping one row array${key === undefined ? "" : ` under "${key}"`}`;
   if (!Array.isArray(rows)) {
-    throw new MudabParseError(`Unexpected response shape from ${path}: ${expected}, got ${describeShape(res)}.`);
+    throw new MudabParseError(`${request}: unexpected response shape: ${expected}, got ${describeShape(res)}.`);
   }
   for (let i = 0; i < rows.length; i++) {
     const row: unknown = rows[i];
     if (!isRecord(row)) {
       const what = row === null ? "null" : Array.isArray(row) ? "an array" : `a ${typeof row}`;
       throw new MudabParseError(
-        `Unexpected response shape from ${path}: ${expected} of objects, got ${what} as row ${i}.`,
+        `${request}: unexpected response shape: ${expected} of objects, got ${what} as row ${i}.`,
       );
     }
     // JSON.parse reads a number beyond the double range (1e309) as Infinity, which
@@ -203,7 +205,7 @@ export function extractRows<T>(res: unknown, path = "the API"): T[] {
     for (const [field, value] of Object.entries(row)) {
       if (typeof value === "number" && !Number.isFinite(value)) {
         throw new MudabParseError(
-          `Unexpected value from ${path}: row ${i} field ${cutForMessage(quoteServerText(field))} is a ` +
+          `${request}: row ${i} field ${cutForMessage(quoteServerText(field))} is a ` +
             "number beyond the range of a double (it reads as Infinity, and would print as null, " +
             '"no value").',
         );
@@ -359,14 +361,15 @@ export class MudabClient {
         detail: `the server answered with an error instead of rows: ${errors}`,
       });
     }
-    const rows = extractRows<T>(res, resource);
+    const request = `POST ${this.engine.describeUrl(resource)}`;
+    const rows = extractRows<T>(res, resource, request);
     // The range is the only selection the server makes. A reply with more rows than were
     // asked for means it ignored the range, so the rows are not the page asked for (for
     // `from` > 0 they start at row 0): an error, never a silently larger page.
     const count = body.range?.count;
     if (count !== undefined && rows.length > count) {
       throw new MudabParseError(
-        `Unexpected response from ${resource}: asked for at most ${count} rows ` +
+        `${request}: asked for at most ${count} rows ` +
           `(from ${body.range?.from ?? 0}), got ${rows.length}. The server did not honour the range, ` +
           `so these are not the rows asked for; fetch the whole table ({ all: true }; --all on the ` +
           `CLI) and select rows yourself.`,

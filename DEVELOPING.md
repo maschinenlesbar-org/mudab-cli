@@ -212,8 +212,7 @@ to the CLI's own. Files:
   (`1e-400`) into 0 and a subnormal into the nearest one it can hold (`3e-324` into `5e-324`), all
   silently. `postJson` scans the text once before parsing
   (`scanNumbers`, `exactAtTheEdges` in `engine.ts`; it skips strings) and makes such an answer a
-  `MudabParseError` (exit 1): `Unexpected response from <path>: the number <N> cannot be
-  represented exactly.` Past 2^53 the check compares the number as written with the number as
+  `MudabParseError` (exit 1): `POST <url>: the number <N> cannot be represented exactly.` Past 2^53 the check compares the number as written with the number as
   printed (`String(value)`, `decimalOf`): `1E23` or `1.7976931348623157E308`, a double a server
   printed in its shortest form, prints as the same number and passes. So does a subnormal (below
   2.2250738585072014e-308, the smallest normal double, `MIN_NORMAL`), where a double has fewer
@@ -252,10 +251,16 @@ to the CLI's own. Files:
   splits a surrogate pair, so a message is well-formed; server text an own message
   quotes as a JSON string (a wrapper key, a row's field name, the start of a body) goes
   through `quoteServerText` (exported), which also escapes DEL, C1, U+2028/U+2029 and the bidi
-  controls that `JSON.stringify` leaves raw; a string option value is quoted. A body that is
-  not JSON names the parser's reason (its line breaks folded, so the message is one line), the content type, the size and how the body starts
+  controls that `JSON.stringify` leaves raw; a string option value is quoted. **Every error about
+  an answer names the request**, `POST <url>: …` (`describeUrl`: the absolute URL, userinfo
+  redacted, cut at 500 characters), as a network error does: an empty body, a body that is not
+  JSON, an unknown charset, a number that can't be carried exactly, the wrong shape (`extractRows`,
+  which takes the request as its third argument), a non-finite field, more rows than asked for,
+  and a body too large to read as text. A body that is
+  not JSON (`POST <url>: the answer is not valid JSON: <reason>. …`) names the parser's reason (its line breaks folded, so the message is one line), the content type, the size and how the body starts
   (an HTML page is called one); a body above Node's longest string (~512 MiB) is a
-  `MudabParseError` saying so, whatever `maxResponseBytes` allows.
+  `MudabParseError` saying so (`POST <url>: the answer is too large to read as text (N bytes; …)`),
+  whatever `maxResponseBytes` allows.
 - **Input validation** ([`validate.ts`](packages/client/src/validate.ts)): a rule is a pure
   `<thing>Problem(value)` function that returns why a value is invalid, or `undefined`.
   The library enforces it with `assertValid(name, value, problem)` before any request,

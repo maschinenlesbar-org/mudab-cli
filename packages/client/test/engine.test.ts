@@ -50,7 +50,7 @@ test("postJson rejects an empty or 204 body as a MudabParseError", async () => {
     const e = new RequestEngine({ transport: mt.transport });
     await assert.rejects(
       () => e.postJson("/x", {}),
-      (err) => err instanceof MudabParseError && err.message === "Empty response body from /x",
+      (err) => err instanceof MudabParseError && err.message === "POST https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements/x: empty response body.",
     );
   }
 });
@@ -75,7 +75,7 @@ test("a number the JSON cannot carry exactly is a parse error, never a changed v
     const e = new RequestEngine({ transport: makeMockTransport(() => rawResponse(body(n), "application/json")).transport });
     await assert.rejects(e.postJson("/STATION_SMALL", {}), (err: unknown) => {
       assert.ok(err instanceof MudabParseError, n);
-      assert.equal(err.message, `Unexpected response from /STATION_SMALL: the number ${n} cannot be represented exactly.`);
+      assert.equal(err.message, `POST https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements/STATION_SMALL: the number ${n} cannot be represented exactly.`);
       return true;
     });
   }
@@ -424,9 +424,9 @@ test("a parse error says what came back: the parser's reason, content type, size
     [
       "<html><body>Wartungsarbeiten</body></html>",
       "text/html",
-      /^Failed to parse JSON response from \/STATION_SMALL: .+\. The reply \(content type "text\/html", 42 bytes\) starts with "<html><body>Wartungsarbeiten<\/body><\/html>"\. It looks like an HTML page/,
+      /^POST https:\/\/geoportal\.bafg\.de\/mudab\/rest\/BaseController\/FilterElements\/STATION_SMALL: the answer is not valid JSON: .+\. The reply \(content type "text\/html", 42 bytes\) starts with "<html><body>Wartungsarbeiten<\/body><\/html>"\. It looks like an HTML page/,
     ],
-    ['{"V_STATION_SMALL":[{"a":1', "application/json", /^Failed to parse JSON response from \/STATION_SMALL: .*JSON.*\. The reply \(content type "application\/json", 26 bytes\) starts with/],
+    ['{"V_STATION_SMALL":[{"a":1', "application/json", /^POST https:\/\/geoportal\.bafg\.de\/mudab\/rest\/BaseController\/FilterElements\/STATION_SMALL: the answer is not valid JSON: .*JSON.*\. The reply \(content type "application\/json", 26 bytes\) starts with/],
   ];
   for (const [body, type, message] of cases) {
     const mt = makeMockTransport(() => rawResponse(body, type));
@@ -446,7 +446,7 @@ test("a parse error is one line: the parser's reason quotes the body's line brea
     await assert.rejects(new RequestEngine({ transport: mt.transport }).postJson("/STATION_SMALL", {}), (err) => {
       assert.ok(err instanceof MudabParseError);
       assert.doesNotMatch(err.message, /[\r\n]/, JSON.stringify(err.message));
-      assert.match(err.message, /^Failed to parse JSON response from \/STATION_SMALL: Unexpected token/);
+      assert.match(err.message, /^POST https:\/\/geoportal\.bafg\.de\/mudab\/rest\/BaseController\/FilterElements\/STATION_SMALL: the answer is not valid JSON: Unexpected token/);
       return true;
     });
   }
@@ -703,4 +703,26 @@ test("bigIntegerKeys: a declared member's number is its exact literal as a strin
   // Without declarations the scan is the plain number check.
   assert.equal(firstInexactNumber('{"a":"1e400","b":3e-324}'), "3e-324");
   assert.deepEqual(scanNumbers('{"a":1}'), { json: '{"a":1}', inexact: undefined });
+});
+
+test("an answer error names the request: method and URL, userinfo redacted (D9)", async () => {
+  const answers: Array<[string, () => HttpResponse]> = [
+    ["not valid JSON", () => rawResponse("<html>", "text/html")],
+    ["empty response body", () => rawResponse(" ", "application/json")],
+    ["cannot be represented exactly", () => rawResponse('{"n":1e400}', "application/json")],
+    ["unsupported response charset", () => rawResponse("{}", "application/json; charset=x-bogus")],
+  ];
+  const base = new URL("https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements");
+  base.username = "alice";
+  base.password = "s3cret";
+  for (const [what, respond] of answers) {
+    const e = new RequestEngine({ baseUrl: base.href, transport: makeMockTransport(respond).transport });
+    await assert.rejects(e.postJson("/STATION_SMALL", {}), (err: unknown) => {
+      assert.ok(err instanceof MudabParseError, what);
+      assert.ok(err.message.startsWith(`POST ${base.protocol}//***@${base.host}`), err.message);
+      assert.ok(err.message.includes("/FilterElements/STATION_SMALL: ") && err.message.includes(what), err.message);
+      assert.ok(!err.message.includes("s3cret"), err.message);
+      return true;
+    });
+  }
 });

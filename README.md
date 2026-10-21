@@ -65,7 +65,8 @@ for the full reference.
 Each line on stderr is a **log record**: a timestamp (UTC), a level (`ERROR`, `WARN`,
 `INFO`) and a topic, the program and the area it comes from (`mudab.cli` for usage
 errors, `mudab.api` for the API's answers, a malformed answer included, `mudab.http` for the connection, `mudab.output`
-for a failed write to stdout). By default
+for a failed write to stdout). An error about an answer names the request (`POST <url>: the
+answer is not valid JSON: …`). By default
 it is written log4j style; `--log-format jsonl` writes one JSON object per line instead. A
 record is always one line: a line break, a control character or a bidi control in a message
 (a server's text, a value you typed) is written as an escape (`\n`, `\u001b`, `\u202e`), so

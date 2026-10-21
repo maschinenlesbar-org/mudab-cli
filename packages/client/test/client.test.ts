@@ -75,7 +75,7 @@ test("extractRows accepts only the resource's own wrapper key, and only object r
     (err) =>
       err instanceof MudabParseError &&
       err.message ===
-        'Unexpected response shape from /MV_STATION_MSMNT: expected a JSON object wrapping one row array under ' +
+        'POST /MV_STATION_MSMNT: unexpected response shape: expected a JSON object wrapping one row array under ' +
           '"MV_STATION_MSMNT", got an object with the key "V_MESSWERTE_PLC".',
   );
   for (const [rows, what] of [
@@ -194,7 +194,7 @@ test("a 200 reply of any other shape is a MudabParseError naming what came back"
       (err) =>
         err instanceof MudabParseError &&
         err.message.startsWith(
-          'Unexpected response shape from /STATION_SMALL: expected a JSON object wrapping one row array under "V_STATION_SMALL", got ',
+          'POST https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements/STATION_SMALL: unexpected response shape: expected a JSON object wrapping one row array under "V_STATION_SMALL", got ',
         ) &&
         message.test(err.message),
       body,
@@ -339,7 +339,7 @@ test("a reply with more rows than the range asked for is a MudabParseError, not 
     () => client.stations({ range: { from: 100, count: 2 } }),
     (err) =>
       err instanceof MudabParseError &&
-      err.message.startsWith("Unexpected response from /STATION_SMALL: asked for at most 2 rows (from 100), got 7."),
+      err.message.startsWith("POST https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements/STATION_SMALL: asked for at most 2 rows (from 100), got 7."),
   );
   // As many rows as asked for, or fewer (the end of the table), are the page.
   assert.equal((await clientFor(many).client.stations({ range: { count: 7 } })).length, 7);
@@ -360,7 +360,7 @@ test("a number a double cannot carry exactly is a MudabParseError, never null, 0
       () => call(new MudabClient({ transport: mt.transport })),
       (err) =>
         err instanceof MudabParseError &&
-        err.message === `Unexpected response from ${resource}: the number ${n} cannot be represented exactly.`,
+        err.message === `POST https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements${resource}: the number ${n} cannot be represented exactly.`,
       body,
     );
   }
@@ -374,7 +374,24 @@ test("extractRows still refuses a field beyond the double range in rows it is ha
     () => extractRows({ MV_STATION_MSMNT: [{ STATNAME_ST: "A", VALUE_MS: Infinity }] }, "/MV_STATION_MSMNT"),
     (err) =>
       err instanceof MudabParseError &&
-      err.message.startsWith('Unexpected value from /MV_STATION_MSMNT: row 0 field "VALUE_MS"') &&
+      err.message.startsWith('POST /MV_STATION_MSMNT: row 0 field "VALUE_MS"') &&
       /beyond the range of a double/.test(err.message),
   );
+});
+
+test("a shape, value or range error names the request: method and URL, userinfo redacted (D9)", async () => {
+  const base = "https://alice:s3cret@mirror.example/mudab";
+  for (const [body, what, call] of [
+    ['{"other":[]}', "unexpected response shape", (c: MudabClient) => c.stations()],
+    ['{"V_STATION_SMALL":[1]}', "as row 0", (c: MudabClient) => c.stations()],
+    ['{"V_STATION_SMALL":[{"a":1},{"a":2}]}', "asked for at most 1 rows", (c: MudabClient) => c.stations({ range: { count: 1 } })],
+  ] as const) {
+    const mt = makeMockTransport(() => rawResponse(body, "application/json"));
+    await assert.rejects(call(new MudabClient({ baseUrl: base, transport: mt.transport })), (err: unknown) => {
+      assert.ok(err instanceof MudabParseError, what);
+      assert.ok(err.message.startsWith("POST https://***@mirror.example/mudab/STATION_SMALL: "), err.message);
+      assert.ok(err.message.includes(what) && !err.message.includes("s3cret"), err.message);
+      return true;
+    });
+  }
 });
