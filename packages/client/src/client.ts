@@ -16,7 +16,8 @@
 //   const cw = (await c.parameters({ all: true })).filter((p) => p.COMPT_DS === "CW"); // whole table
 
 import { RequestEngine, cleanDetail, quoteServerText, serverTextForMessage, type EngineOptions } from "./engine.js";
-import { MudabApiError, MudabParseError, MudabValidationError, cutForMessage, cutText } from "./errors.js";
+import { MudabApiError, MudabParseError, MudabValidationError, cutForMessage, cutText, quoteValue } from "./errors.js";
+import { assertValid, normalizeToken, tokenProblem } from "./validate.js";
 import type {
   Compartment,
   FilterRequest,
@@ -69,18 +70,27 @@ export const COMPARTMENT_CODES: readonly CompartmentCode[] = Object.freeze([
 ] as const);
 
 /**
- * The endpoint of a compartment. The lookup checks own keys only, so an unknown
- * value (`"WASSER"`, or `"toString"`/`"__proto__"`, which a plain object inherits)
- * is a `MudabValidationError`, not a TypeError from deep inside the engine.
+ * Why `value` is not a compartment `parameters()` accepts, or undefined when it is. A
+ * compartment is a token (`tokenProblem`: not blank, no invisible, control or half character,
+ * quoted visibly when refused), compared after trimming and NFC (`normalizeToken`, so `" wasser"`
+ * is `wasser`) with the four known names, own keys only: `"WASSER"`, or `"toString"`/`"__proto__"`,
+ * which a plain object inherits, are refused. The CLI's `--compartment` parser calls it too.
+ */
+export function compartmentProblem(value: unknown): string | undefined {
+  const expected = `expected one of ${PARAMETER_COMPARTMENTS.join(", ")}`;
+  if (typeof value !== "string") return `${expected}, got ${cutForMessage(String(value))}.`;
+  const problem = tokenProblem(value);
+  if (problem !== undefined) return problem;
+  return Object.hasOwn(COMPARTMENT_ENDPOINT, normalizeToken(value)) ? undefined : `${expected}, got ${quoteValue(value)}.`;
+}
+
+/**
+ * The endpoint of a compartment ({@link compartmentProblem}), else a `MudabValidationError`
+ * (`Invalid compartment: …`), not a TypeError from deep inside the engine.
  */
 function compartmentEndpoint(compartment: unknown): string {
-  if (typeof compartment === "string" && Object.hasOwn(COMPARTMENT_ENDPOINT, compartment)) {
-    return COMPARTMENT_ENDPOINT[compartment as ParameterCompartment];
-  }
-  throw new MudabValidationError(
-    `Invalid compartment: expected one of ${PARAMETER_COMPARTMENTS.join(", ")}, got ` +
-      `${cutForMessage(typeof compartment === "string" ? JSON.stringify(compartment) : String(compartment))}.`,
-  );
+  assertValid("compartment", compartment, compartmentProblem);
+  return COMPARTMENT_ENDPOINT[normalizeToken(compartment as string) as ParameterCompartment];
 }
 
 /**

@@ -290,17 +290,35 @@ test("normalizeRange completes a range to the default page and leaves { all: tru
 });
 
 test("parameters() rejects an unknown compartment with a MudabValidationError, no request", async () => {
-  for (const bad of ["WASSER", "toString", "__proto__", "constructor", "", 5]) {
+  for (const [bad, reason] of [
+    ["WASSER", 'expected one of biologie, biota, wasser, sediment, got "WASSER".'],
+    ["toString", 'expected one of biologie, biota, wasser, sediment, got "toString".'],
+    ["__proto__", 'expected one of biologie, biota, wasser, sediment, got "__proto__".'],
+    ["constructor", 'expected one of biologie, biota, wasser, sediment, got "constructor".'],
+    [5, "expected one of biologie, biota, wasser, sediment, got 5."],
+    [null, "expected one of biologie, biota, wasser, sediment, got null."],
+    ["", "Expected a non-empty value."],
+    ["\u200b", "Expected a non-empty value."],
+    // An invisible character is refused and shown escaped (D8, D10), never raw.
+    ["wasser\u200b", '"wasser\\u200b" contains an invisible or control character (U+200B).'],
+    ["wa\u00adsser", '"wa\\u00adsser" contains an invisible or control character (U+00AD).'],
+    ["\ud800wasser", '"\\ud800wasser" contains half of a character (a lone surrogate).'],
+  ] as const) {
     const { client, mt } = clientFor(fx.parameters);
     await assert.rejects(
       () => client.parameters({}, bad as never),
-      (err) =>
-        err instanceof MudabValidationError &&
-        err.message ===
-          `Invalid compartment: expected one of biologie, biota, wasser, sediment, got ${typeof bad === "string" ? JSON.stringify(bad) : String(bad)}.`,
+      (err) => err instanceof MudabValidationError && err.message === `Invalid compartment: ${reason}`,
       String(bad),
     );
     assert.equal(mt.calls.length, 0);
+  }
+});
+
+test("parameters() takes a compartment trimmed and in NFC, as a token (D8)", async () => {
+  for (const value of [" wasser ", "wasser\n", "\twasser"]) {
+    const { client, mt } = clientFor({ MV_PARAMETER_WASSER: [] });
+    await client.parameters({}, value as never);
+    assert.match(new URL(mt.last().url).pathname, /\/MV_PARAMETER_WASSER$/, JSON.stringify(value));
   }
 });
 

@@ -4,7 +4,7 @@
 // any request; the CLI's commander parsers call the same function and turn its reason
 // into a usage error, so one input gets one outcome on both sides.
 
-import { MudabValidationError, cutForMessage } from "./errors.js";
+import { MudabValidationError, cutForMessage, quoteValue } from "./errors.js";
 
 /** Why `value` is invalid (for example `"Expected a non-empty value."`), or undefined when it is valid. */
 export type Problem<T = string> = (value: T) => string | undefined;
@@ -24,6 +24,80 @@ export function assertValid<T>(name: string, value: T, problem: Problem<T>): T {
 /** A value as it appears in a validation message: strings quoted, the rest as is. */
 function show(value: unknown): string {
   return cutForMessage(typeof value === "string" ? JSON.stringify(value) : String(value));
+}
+
+/** Characters that never make a value non-blank: whitespace, controls, format characters, combining marks. */
+const INVISIBLE = /[\s\p{Cc}\p{Cf}\p{M}]/gu;
+
+/** A lone surrogate: half of a character. */
+const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+
+/**
+ * True when nothing in `value` would match anything: it holds only whitespace, control and
+ * format characters (a zero-width space, a soft hyphen) and combining marks. Such a value
+ * matches nothing, so it is refused as blank.
+ */
+function isBlank(value: string): boolean {
+  return value.replace(INVISIBLE, "") === "";
+}
+
+/** `U+200B` for the first character of `text` that `pattern` matches. */
+function codePointOf(text: string, pattern: RegExp): string {
+  const ch = pattern.exec(text)?.[0] ?? "";
+  return `U+${(ch.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, "0")}`;
+}
+
+/** A control or format character in a token (after trimming): every Cc and every Cf. */
+const TOKEN_INVISIBLE = /[\p{Cc}\p{Cf}]/u;
+
+/**
+ * Why `value` cannot be sent as a token, or undefined when it can. A token is a code, an enum
+ * value or an id: a value compared exactly (here `parameters()`'s compartment). The rules apply
+ * to the value with surrounding whitespace trimmed, as it is used ({@link normalizeToken}): not
+ * blank (and not only invisible characters or combining marks), no lone surrogate, and no control
+ * or format character at all (a zero-width space, ZWJ, a soft hyphen, a bidi control), since an
+ * invisible character in a code only ever makes it match nothing. The reason quotes the value
+ * visibly (`quoteValue`).
+ */
+export function tokenProblem(value: string): string | undefined {
+  if (typeof value !== "string") return "Expected a string.";
+  if (isBlank(value)) return "Expected a non-empty value.";
+  const token = value.trim();
+  if (LONE_SURROGATE.test(token)) return `${quoteValue(value)} contains half of a character (a lone surrogate).`;
+  if (TOKEN_INVISIBLE.test(token)) {
+    return `${quoteValue(value)} contains an invisible or control character (${codePointOf(token, TOKEN_INVISIBLE)}).`;
+  }
+  return undefined;
+}
+
+/** A token as it is used: trimmed and in composed Unicode (NFC). Check it with {@link tokenProblem} first. */
+export function normalizeToken(value: string): string {
+  return value.trim().normalize("NFC");
+}
+
+/**
+ * The items of a comma-separated list, as typed: each item is checked (`listProblem`) and
+ * canonicalised (`normalizeToken`) on its own, so `"a1, a2"` gives `a2`, and `"a1,,a2"`, `"a1,"`
+ * and `","` are refused rather than read as an empty item. (No mudab command takes a list today;
+ * the rule is the kit's, for library callers and a later one.)
+ */
+export function splitList(value: string): string[] {
+  return value.split(",");
+}
+
+/**
+ * Why `items` cannot be used as a list, or undefined when it can: not an array of strings, no
+ * item at all, or an item that `itemProblem` refuses (by default {@link tokenProblem}: a blank
+ * item is refused, never dropped). The reason names the item.
+ */
+export function listProblem(items: readonly string[], itemProblem: Problem = tokenProblem): string | undefined {
+  if (!Array.isArray(items)) return "Expected a list of strings.";
+  if (items.length === 0) return "Expected at least one value.";
+  for (let i = 0; i < items.length; i++) {
+    const problem = itemProblem(items[i] as string);
+    if (problem !== undefined) return items.length === 1 ? problem : `item ${i + 1} of ${items.length}: ${problem}`;
+  }
+  return undefined;
 }
 
 /**

@@ -3,9 +3,9 @@
 // `compartments` code table. Every list command shares the range/filter/orderby
 // options and returns the endpoint's row array as JSON.
 
-import { Option, type Command } from "commander";
+import { InvalidArgumentError, Option, type Command } from "commander";
 import type { CliDeps } from "../io.js";
-import { COMPARTMENT_CODES, PARAMETER_COMPARTMENTS } from "@maschinenlesbar.org/mudab-client/internal/client";
+import { COMPARTMENT_CODES, PARAMETER_COMPARTMENTS, compartmentProblem } from "@maschinenlesbar.org/mudab-client/internal/client";
 import type { MudabClient, ParameterCompartment } from "@maschinenlesbar.org/mudab-client/internal/client";
 import type { ListRequest } from "@maschinenlesbar.org/mudab-client/internal/types";
 import { action, addListOptions, buildFilterRequest, renderJson } from "../shared.js";
@@ -42,6 +42,19 @@ const LIST_COMMANDS: { name: string; desc: string; run: ListFn }[] = [
   },
 ];
 
+/**
+ * commander value-parser for `--compartment`: the library's {@link compartmentProblem} (a token,
+ * one of the four names after trimming and NFC), so a bad value (`--compartment water`,
+ * `--compartment "wasser\u200b"`) is a usage error with the library's reason, the value quoted
+ * visibly, before any request. The help still lists the choices; the library canonicalises.
+ */
+function parseCompartment(value: string): string {
+  const problem = compartmentProblem(value);
+  // Commander puts it after its own sentence ("… is invalid."): start it as one.
+  if (problem !== undefined) throw new InvalidArgumentError(problem.charAt(0).toUpperCase() + problem.slice(1));
+  return value;
+}
+
 export function registerCommands(program: Command, deps: CliDeps): void {
   for (const sub of LIST_COMMANDS) {
     const cmd = program.command(sub.name).description(sub.desc);
@@ -57,9 +70,9 @@ export function registerCommands(program: Command, deps: CliDeps): void {
     .command("parameters")
     .description("List measured parameters (MV_PARAMETER)")
     .addOption(
-      new Option("--compartment <c>", "restrict to a compartment's parameter endpoint").choices(
-        [...PARAMETER_COMPARTMENTS],
-      ),
+      new Option("--compartment <c>", "restrict to a compartment's parameter endpoint")
+        .choices([...PARAMETER_COMPARTMENTS])
+        .argParser(parseCompartment),
     );
   addListOptions(params).action(
     action(deps, async ({ client, global, opts }) => {

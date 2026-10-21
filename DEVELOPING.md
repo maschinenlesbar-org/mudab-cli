@@ -162,8 +162,9 @@ to the CLI's own. Files:
   but the URL's own credentials here, so those two cases are skipped) and P21 (every
   relative link in `README.md` points to a file `package.json` `files` ships, since npmjs.com
   shows the README; other documents are linked by their GitHub URL). The kit round of 2026-10-21 added P24 (an input is
-  canonicalised or refused: its adapter lists no text filter and no path id, since the CLI has
-  neither — the server ignores filters, and every endpoint is a fixed path) and P25 (a number
+  canonicalised or refused, a refusal shows an invisible character escaped: its adapter lists no
+  text filter and no list, since the CLI has neither — the server ignores filters —, and one
+  token, `--compartment`, read back from the endpoint path it picks) and P25 (a number
   the answer can't carry exactly, or an empty answer, is exit 1 with an ERROR record of
   `mudab.api` naming the request, checked on `stations --all`). The fix round of 2026-10-21
   (`.reviews/2026-10-21-exploratory/fix-plan.md`) added P27, big and odd answers: a large flat
@@ -245,7 +246,11 @@ to the CLI's own. Files:
   engine options (`timeoutMs` 0..2³¹−1, `maxRetries` 0..`MAX_RETRIES` = 10 — shared with
   `--max-retries` —, `retryDelayMs` 0..30 000, `maxResponseBytes` 0..2⁵³−1), the
   request's `range` and `all` (see the quirks table; `normalizeRange`, exported, shows
-  what a list method sends), `parameters()`'s compartment, and the header options:
+  what a list method sends), `parameters()`'s compartment (`compartmentProblem`, exported, which
+  `--compartment` uses too: a token by the kit's rule, `tokenProblem` — not blank, not only
+  invisible characters or combining marks, no control or format character such as a zero-width
+  space or soft hyphen, no lone surrogate —, compared after `normalizeToken`, trim and NFC, with
+  the four names; `" wasser "` is `wasser`, `"wasser\u200b"` is refused), and the header options:
   `userAgent` and every `defaultHeaders` value must be non-blank Latin-1 without
   control characters (tab is fine), and header names must be tokens
   (`headerValueProblem`/`headerNameProblem`, exported, which `--user-agent` uses too).
@@ -264,7 +269,13 @@ to the CLI's own. Files:
   splits a surrogate pair, so a message is well-formed; server text an own message
   quotes as a JSON string (a wrapper key, a row's field name, the start of a body) goes
   through `quoteServerText` (exported), which also escapes DEL, C1, U+2028/U+2029 and the bidi
-  controls that `JSON.stringify` leaves raw; a string option value is quoted. **Every error about
+  controls that `JSON.stringify` leaves raw; a string option value is quoted, and a refused input
+  value with `quoteValue` (exported), which escapes DEL, C1, U+2028/2029, every format character
+  and a lone surrogate, so a refusal shows why (`"wasser\u200b" contains an invisible or control
+  character (U+200B).`). commander's own echo of a rejected value (`argument '…' is invalid`) is
+  escaped the same way in `run.ts` (`escapeCommanderError`), and the redaction knows a secret's
+  escaped form. `validate.ts` also has the kit's `splitList` and `listProblem` (exported; no mudab
+  command takes a list). **Every error about
   an answer names the request**, `POST <url>: …` (`describeUrl`: the absolute URL, userinfo
   redacted, cut at 500 characters), as a network error does: an empty body, a body that is not
   JSON, an unknown charset, a number that can't be carried exactly, the wrong shape (`extractRows`,

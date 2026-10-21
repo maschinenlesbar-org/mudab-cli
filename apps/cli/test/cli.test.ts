@@ -60,6 +60,19 @@ test("an invalid --compartment is rejected (exit 2)", async () => {
   const code = await run(["parameters", "--compartment", "bogus"], cli.deps);
   assert.equal(code, 2);
   assert.equal(cli.mt.calls.length, 0);
+  assert.match(untimed(cli.err[0] ?? ""), /^ERROR \[mudab\.cli\] option '--compartment <c>' argument 'bogus' is invalid\. Expected one of biologie, biota, wasser, sediment, got "bogus"\.$/);
+});
+
+test("--compartment is a token: trimmed and in NFC it is sent; an invisible character is refused and shown escaped (D8, D10)", async () => {
+  const ok = makeCli(() => jsonResponse({ MV_PARAMETER_WASSER: [] }));
+  assert.equal(await run(["parameters", "--compartment", " wasser "], ok.deps), 0);
+  assert.match(new URL(ok.mt.last().url).pathname, /\/MV_PARAMETER_WASSER$/);
+  const bad = makeCli(() => jsonResponse(fx.parameters));
+  assert.equal(await run(["parameters", "--compartment", "wasser\u200b"], bad.deps), 2);
+  assert.equal(bad.mt.calls.length, 0);
+  const err = bad.err.join("\n");
+  assert.ok(!err.includes("\u200b"), "the zero-width space is shown raw");
+  assert.match(untimed(err), /argument 'wasser\\u200b' is invalid\. "wasser\\u200b" contains an invisible or control character \(U\+200B\)\./);
 });
 
 test("plc-measurements POSTs to /V_MESSWERTE_PLC", async () => {

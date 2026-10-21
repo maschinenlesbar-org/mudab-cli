@@ -10,6 +10,7 @@ export {
   MAX_RANGE_END,
   PARAMETER_COMPARTMENTS,
   COMPARTMENT_CODES,
+  compartmentProblem,
 } from "./client.js";
 export type { CompartmentCode, MudabClientOptions, ParameterCompartment } from "./client.js";
 export {
@@ -40,9 +41,19 @@ export {
   cutForMessage,
   cutText,
   toWellFormed,
+  quoteValue,
   MAX_MESSAGE_VALUE_LENGTH,
 } from "./errors.js";
-export { assertValid, baseUrlProblem, headerNameProblem, headerValueProblem } from "./validate.js";
+export {
+  assertValid,
+  baseUrlProblem,
+  headerNameProblem,
+  headerValueProblem,
+  listProblem,
+  normalizeToken,
+  splitList,
+  tokenProblem,
+} from "./validate.js";
 export type { Problem } from "./validate.js";
 
 export * from "./types.js";

@@ -49,7 +49,7 @@ for the whole table use `--all`.
 |---|---|
 | `mudab stations` | measurement stations (`STATION_SMALL`) |
 | `mudab project-stations` | project / monitoring-programme stations (`PROJECTSTATION_SMALL`) |
-| `mudab parameters [--compartment biologie\|biota\|wasser\|sediment]` | measured parameters (`MV_PARAMETER`, or a compartment-specific endpoint) |
+| `mudab parameters [--compartment biologie\|biota\|wasser\|sediment]` | measured parameters (`MV_PARAMETER`, or a compartment-specific endpoint). The compartment is matched after trimming; a value with an invisible or control character (a zero-width space, a soft hyphen) is a usage error that shows it escaped (`\u200b`) |
 | `mudab measurements` | individual station measurements (`MV_STATION_MSMNT`) — a very large table |
 | `mudab plc-stations` | HELCOM PLC river-load stations (`V_PLC_STATION`) |
 | `mudab plc-parameters` | parameters measured at PLC stations (`V_GEMESSENE_PARA_PLC`) |
