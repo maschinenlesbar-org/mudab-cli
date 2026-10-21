@@ -186,8 +186,11 @@ export function cleanDetail(raw: string): string {
   return clean.length > MAX_DETAIL_LENGTH ? `${cutText(clean, MAX_DETAIL_LENGTH)}…` : clean;
 }
 
-/** True for U+061C, U+200E, U+200F, U+202A–U+202E and U+2066–U+2069: the bidi controls. */
-function isBidiControl(n: number): boolean {
+/**
+ * True for U+061C, U+200E, U+200F, U+202A–U+202E and U+2066–U+2069: the bidi controls, which
+ * reorder the text that follows on a terminal. The CLI escapes them in its JSON output too.
+ */
+export function isBidiControl(n: number): boolean {
   return n === 0x061c || n === 0x200e || n === 0x200f || (n >= 0x202a && n <= 0x202e) || (n >= 0x2066 && n <= 0x2069);
 }
 

@@ -169,6 +169,21 @@ test("an unknown command exits 2", async () => {
   assert.equal(await run(["boguscmd"], cli.deps), 2);
 });
 
+test("bidi controls in server data are escaped in the JSON output", async () => {
+  const bidi = [0x061c, 0x200e, 0x200f, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2066, 0x2067, 0x2068, 0x2069];
+  const row = { ...fx.stations.V_STATION_SMALL[0], NAME_PS: `OMO\u202eevil`, NOTE: String.fromCharCode(...bidi) };
+  const served = { V_STATION_SMALL: [row] };
+  for (const format of [[], ["--compact"]]) {
+    const cli = makeCli(() => jsonResponse(served));
+    assert.equal(await run([...format, "stations"], cli.deps), 0);
+    const text = cli.out.join("\n");
+    assert.deepEqual([...text].filter((c) => bidi.includes(c.charCodeAt(0))), [], format.join(" "));
+    assert.match(text, /OMO\\u202eevil/);
+    assert.match(text, /\\u061c\\u200e\\u200f\\u202a\\u202b\\u202c\\u202d\\u202e\\u2066\\u2067\\u2068\\u2069/);
+    assert.deepEqual(JSON.parse(text), served.V_STATION_SMALL);
+  }
+});
+
 test("DEL and C1 control characters in server data are escaped in the JSON output", async () => {
   const controls = String.fromCharCode(0x7f, 0x85, 0x9b) + "2J";
   const row = { ...fx.stations.V_STATION_SMALL[0], NAME_PS: `OMO${controls}`, COMPT_DS: String.fromCharCode(0x1b) + "[31m" };

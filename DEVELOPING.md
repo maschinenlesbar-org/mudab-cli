@@ -284,7 +284,9 @@ to the CLI's own. Files:
   The CLI replaces the Basic value and the pair on stdout and stderr, the bare password on
   stderr only (on stdout a short password may well occur in the data). Whatever a custom transport throws reaches
   the caller as a `MudabNetworkError` (the original, scrubbed, as `cause`).
-- **Printing JSON** (`renderJson`, `shared.ts`): pretty by default; an answer nested too deeply
+- **Printing JSON** (`renderJson`, `shared.ts`): `escapeControlChars` writes the characters
+  `JSON.stringify` leaves raw although a terminal acts on them — DEL, C1 (U+0080–U+009F) and the
+  bidi controls (`isBidiControl`, exported from `engine.ts`) — as `\uXXXX`. Pretty by default; an answer nested too deeply
   to pretty-print is an ERROR record of `mudab.cli` suggesting `--compact`, one too large for a
   string suggests paging. `--compact` takes V8's fast path (`JSON.stringify(value)`) unless the
   answer holds a string or key of 64 Mi characters or more (`holdsHugeString`), which goes

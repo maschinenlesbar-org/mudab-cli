@@ -7,7 +7,7 @@ import { logOf, type CliDeps } from "./io.js";
 import type { MudabClientOptions } from "@maschinenlesbar.org/mudab-client/internal/client";
 import { MudabError, MudabValidationError } from "@maschinenlesbar.org/mudab-client/internal/errors";
 import { baseUrlProblem, headerValueProblem } from "@maschinenlesbar.org/mudab-client/internal/validate";
-import { DEFAULT_BASE_URL, cleartextProblem, type RetryEvent } from "@maschinenlesbar.org/mudab-client/internal/engine";
+import { DEFAULT_BASE_URL, cleartextProblem, isBidiControl, type RetryEvent } from "@maschinenlesbar.org/mudab-client/internal/engine";
 import { DEFAULT_PAGE_SIZE, MAX_RANGE_END } from "@maschinenlesbar.org/mudab-client/internal/client";
 import type { ListRequest, Range } from "@maschinenlesbar.org/mudab-client/internal/types";
 
@@ -146,18 +146,19 @@ export function buildFilterRequest(opts: ListOptions): ListRequest {
 }
 
 /**
- * Escape the control characters JSON.stringify leaves raw. It escapes C0 (including
- * ESC) but not DEL or the C1 range U+0080–U+009F, and terminals may act on those —
- * U+009B is the 8-bit form of CSI. The output is server data, so escape them; the
- * result is equivalent, valid JSON (these characters only occur inside strings).
- * Checked by char code so the source stays free of control bytes.
+ * Escape the characters JSON.stringify leaves raw although a terminal acts on them. It
+ * escapes C0 (including ESC) but not DEL, the C1 range U+0080–U+009F (U+009B is the 8-bit
+ * form of CSI) or the bidi formatting characters (isBidiControl), which reorder the text that
+ * follows. The output is server data, so escape them; the result is equivalent, valid JSON
+ * (these characters only occur inside strings). Checked by char code so the source stays
+ * free of control bytes.
  */
 export function escapeControlChars(json: string): string {
   let result = "";
   let from = 0;
   for (let i = 0; i < json.length; i++) {
     const c = json.charCodeAt(i);
-    if (c >= 0x7f && c <= 0x9f) {
+    if ((c >= 0x7f && c <= 0x9f) || isBidiControl(c)) {
       result += json.slice(from, i) + "\\u" + c.toString(16).padStart(4, "0");
       from = i + 1;
     }
