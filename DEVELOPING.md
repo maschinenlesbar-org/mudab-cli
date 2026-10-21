@@ -190,6 +190,18 @@ to the CLI's own. Files:
   non-HTTP status, no headers, another body type) or anything thrown into a
   `MudabNetworkError`. The size-limit message names `maxResponseBytes` and
   `--max-response-bytes`.
+- **Numbers are carried exactly or refused.** `JSON.parse` turns a number out of a double's
+  range into Infinity (printed as `null`), rounds one past 2^53 (`12345678901234567890`, also as
+  `…890.0`, `9007199254740993e0`, `9007199254740992.5`) and turns a non-zero one too small
+  (`1e-400`) into 0, all silently. `postJson` scans the text after parsing
+  (`firstInexactNumber`, `exactAtTheEdges` in `engine.ts`) and makes such an answer a
+  `MudabParseError` (exit 1): `Unexpected response from <path>: the number <N> cannot be
+  represented exactly.` Past 2^53 the check compares the number as written with the number as
+  printed (`String(value)`, `decimalOf`): `1E23` or `1.7976931348623157E308`, a double a server
+  printed in its shortest form, prints as the same number and passes. Below 2^53 a decimal fraction keeps a double's precision, as JSON means
+  it, so the measured values (`VALUE_MS`, `VALUE`) pass as they are; no MUDAB field is a number
+  past 2^53 (ids are small integers). `extractRows` still refuses a non-finite field in rows a
+  library caller hands it.
 - **Bodies are decoded by their declared charset** (`decodeBody` in `engine.ts`):
   `TextDecoder` with the Content-Type's `charset` (UTF-8 when none is named; the live
   API declares `application/json;charset=UTF-8`), a leading byte order mark dropped. An
@@ -312,7 +324,7 @@ characters, exported) is cut at a code point and ends in `… (N more characters
 commander's messages, unexpected errors, an output too large or nested too deeply to
 print), `api` (the API's answers: HTTP errors, an error list sent with status 200, a
 malformed answer — a `MudabParseError`: bad JSON, the wrong shape, an empty body, more rows
-than asked for, an unknown charset, a field beyond the double range — and the
+than asked for, an unknown charset, a number that can't be represented exactly — and the
 `--base-url` redirect hint), `http` (the connection: network errors, the size-cap hint,
 the cleartext warning) and `output` (a failed write to stdout). A failed write to stdout
 other than a closed pipe (`handleOutputErrors`, in the bin shim, outside `run()`) is an
