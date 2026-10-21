@@ -267,8 +267,8 @@ export function processLogger(argv: readonly string[]): Logger {
  * The log area of a `MudabError` that is neither an API, a network nor a usage error: a
  * malformed answer (`api`: a `MudabParseError` — bad JSON, the wrong shape, an empty
  * body, more rows than asked for, an unknown charset, a number that can't be represented exactly —
- * the API's answer as much as an error status is), else `cli` (an output too large or
- * nested too deeply to print).
+ * the API's answer as much as an error status is), else `cli`. (An answer too large or nested
+ * too deeply to print is an `OutputError`, logged under `output` before this is reached.)
  */
 function areaOf(err: MudabError): string {
   return err instanceof MudabParseError ? "api" : "cli";
