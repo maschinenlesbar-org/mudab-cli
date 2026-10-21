@@ -165,7 +165,12 @@ to the CLI's own. Files:
   canonicalised or refused: its adapter lists no text filter and no path id, since the CLI has
   neither — the server ignores filters, and every endpoint is a fixed path) and P25 (a number
   the answer can't carry exactly, or an empty answer, is exit 1 with an ERROR record of
-  `mudab.api`, checked on `stations --all`). P26 (`-o`) is not copied: there is no `-o`.
+  `mudab.api` naming the request, checked on `stations --all`). The fix round of 2026-10-21
+  (`.reviews/2026-10-21-exploratory/fix-plan.md`) added P27, big and odd answers: a large flat
+  answer and one full of DEL characters print within a small heap, or past V8's longest string are
+  one ERROR record of `mudab.output`; a lone surrogate or invalid bytes are replaced with U+FFFD
+  and reported in a WARN of `mudab.api` (it starts the built bin, so 30 s). P26 (`-o`) is not
+  copied: there is no `-o`.
 
 ## Conventions to keep
 
@@ -227,7 +232,15 @@ to the CLI's own. Files:
 - **Bodies are decoded by their declared charset** (`decodeBody` in `engine.ts`):
   `TextDecoder` with the Content-Type's `charset` (UTF-8 when none is named; the live
   API declares `application/json;charset=UTF-8`), a leading byte order mark dropped. An
-  unknown charset label is a `MudabParseError`.
+  unknown charset label is a `MudabParseError`. **Text is never changed silently:** the decode is
+  fatal first; bytes not valid in the charset are then decoded with U+FFFD and counted (a U+FFFD
+  the server sent is not), and a lone surrogate written as a JSON escape (`\ud800`, which
+  `JSON.parse` would make half a character and `jq` refuse) is rewritten as `\ufffd`
+  (`wellFormedEscapes`, one linear pass, only when the text holds a surrogate escape). The
+  answer is delivered, and the engine option `onWarning` is told `POST <url>: N characters of the
+  answer were not valid text (invalid bytes or a lone surrogate) and replaced with U+FFFD.`; the
+  CLI's `action()` logs it as a `WARN` record of `mudab.api` (exit 0). A body too large for one
+  string (V8's `ERR_STRING_TOO_LONG`, from either decode) is the `MudabParseError` below.
 - **Library input is checked before any request** (`MudabValidationError`): the numeric
   engine options (`timeoutMs` 0..2³¹−1, `maxRetries` 0..`MAX_RETRIES` = 10 — shared with
   `--max-retries` —, `retryDelayMs` 0..30 000, `maxResponseBytes` 0..2⁵³−1), the
@@ -365,7 +378,7 @@ forge another one or steer the terminal. Before that a lone surrogate (half a
 character, which jq rejects, stopping the whole stream) becomes U+FFFD (`toWellFormed`,
 exported from `errors.ts`), and a message longer than `MAX_RECORD_MESSAGE` (4000
 characters, exported) is cut at a code point and ends in `… (N more characters)`. The areas are `cli` (usage errors and the `--from`/`--count` range hint,
-commander's messages, unexpected errors), `api` (the API's answers: HTTP errors, an error list sent with status 200, a
+commander's messages, unexpected errors), `api` (the API's answers: HTTP errors, text replaced with U+FFFD (a WARN), an error list sent with status 200, a
 malformed answer — a `MudabParseError`: bad JSON, the wrong shape, an empty body, more rows
 than asked for, an unknown charset, a number that can't be represented exactly — and the
 `--base-url` redirect hint), `http` (the connection: network errors, the size-cap hint,

@@ -102,6 +102,15 @@ export interface EngineOptions {
    */
   onRetry?: ((event: RetryEvent) => void) | undefined;
   /**
+   * Called with a one-line warning about an answer the engine delivered changed: characters
+   * that were not valid text — invalid bytes in the declared (or default UTF-8) charset, or a
+   * lone surrogate written as a JSON escape — replaced with U+FFFD. The message names the
+   * request and the count (`POST <url>: 2 characters of the answer were not valid text …`).
+   * Without it the replacement is silent. A throw is swallowed. The CLI logs it as a `WARN`
+   * record of `mudab.api`.
+   */
+  onWarning?: ((message: string) => void) | undefined;
+  /**
    * Member names whose number values may exceed 2^53 (a 64-bit id). The value of a declared
    * member is delivered as its exact literal, as written, as a JSON string (`"5"`), so its type
    * never depends on its size. A declared member whose value is not a number (a string, `null`,
@@ -423,6 +432,7 @@ export class RequestEngine {
   private readonly maxResponseBytes: number;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly onRetry: ((event: RetryEvent) => void) | undefined;
+  private readonly onWarning: ((message: string) => void) | undefined;
   /** `EngineOptions.bigIntegerKeys`, copied. */
   readonly bigIntegerKeys: ReadonlySet<string>;
 
@@ -476,7 +486,18 @@ export class RequestEngine {
     this.sleep = functionOption("sleep", options.sleep, realSleep);
     this.onRetry =
       options.onRetry === undefined ? undefined : functionOption("onRetry", options.onRetry, () => {});
+    this.onWarning =
+      options.onWarning === undefined ? undefined : functionOption("onWarning", options.onWarning, () => {});
     this.bigIntegerKeys = bigIntegerKeysOption(options.bigIntegerKeys);
+  }
+
+  /** Tell `onWarning` about an answer delivered changed. A throwing callback never breaks the request. */
+  private warn(message: string): void {
+    try {
+      this.onWarning?.(message);
+    } catch {
+      // a logging hook is no reason to fail the request
+    }
   }
 
   /** Tell `onRetry` about a retry, then wait. A throwing callback never breaks the request. */
@@ -681,19 +702,26 @@ export class RequestEngine {
    * exactly (`firstInexactNumber`): out of a double's range, past 2^53 in any written form,
    * or non-zero and too small, which would print as `null`, a rounded value or 0. Every error
    * about the answer names the request (`POST <url>: …`, userinfo redacted).
+   *
+   * The text is never changed silently: bytes that are not valid in the charset, and lone
+   * surrogates written as JSON escapes (`\ud800`), are replaced with U+FFFD, so the result is
+   * well-formed text (`jq` rejects a lone surrogate, and with it the whole output), and
+   * `onWarning` is told how many. One bad character never sinks a whole answer.
    */
   async postJson<T>(path: string, payload: unknown): Promise<T> {
     const body = Buffer.from(JSON.stringify(payload ?? {}), "utf8");
     const res = await this.request("POST", path, { accept: "application/json", body });
     const request = `POST ${this.describeUrl(path)}`;
-    const text = decodeBody(res.data, res.contentType, request);
+    const decoded = decodeBody(res.data, res.contentType, request);
+    const text = decoded.text;
     if (res.status === 204 || text.trim().length === 0) {
       // A broken answer, not "no rows": printed as nothing with exit 0, it would let a script
       // carry on as if the table were empty.
       throw new MudabParseError(`${request}: empty response body.`);
     }
     // Declared big integers are quoted first, so JSON.parse delivers them exactly.
-    const { json, inexact } = scanNumbers(text, this.bigIntegerKeys);
+    const repaired = wellFormedEscapes(text);
+    const { json, inexact } = scanNumbers(repaired.json, this.bigIntegerKeys);
     let parsed: T;
     try {
       parsed = JSON.parse(json) as T;
@@ -705,6 +733,13 @@ export class RequestEngine {
     if (inexact !== undefined) {
       throw new MudabParseError(
         `${request}: the number ${cutForMessage(inexact)} cannot be represented exactly.`,
+      );
+    }
+    const replaced = decoded.replaced + repaired.replaced;
+    if (replaced > 0) {
+      this.warn(
+        `${request}: ${replaced} ${replaced === 1 ? "character" : "characters"} of the answer ${replaced === 1 ? "was" : "were"} ` +
+          "not valid text (invalid bytes or a lone surrogate) and replaced with U+FFFD.",
       );
     }
     return parsed;
@@ -790,30 +825,115 @@ const MAX_STRING_LENGTH = bufferConstants.MAX_STRING_LENGTH;
  * none; the live API declares `application/json;charset=UTF-8`). TextDecoder drops a
  * leading byte order mark, which Buffer#toString keeps and JSON.parse then rejects, so
  * a BOM added by a proxy cannot turn a valid answer into a parse error; a Latin-1 body
- * declared as such keeps its umlauts and `µ` instead of turning them into U+FFFD. An
- * unknown charset label is a MudabParseError naming `request` (`POST <url>`).
+ * declared as such keeps its umlauts and `µ`. An unknown charset label is a
+ * MudabParseError naming `request` (`POST <url>`). Bytes that are not valid in the charset
+ * become U+FFFD, and `replaced` counts them: exactly for UTF-8 and the single-byte charsets; for
+ * UTF-16 a U+FFFD the server sent counts too. A body above Node's longest string (about 512 MiB
+ * of text) can't be decoded, whatever maxResponseBytes allows, from either decode: a
+ * MudabParseError saying so, never a raw ERR_STRING_TOO_LONG ("Unexpected error" on the CLI).
  */
-function decodeBody(body: Buffer, contentType: string, request: string): string {
+function decodeBody(body: Buffer, contentType: string, request: string): { text: string; replaced: number } {
   const charset = /;\s*charset\s*=\s*"?([^";\s]+)"?/i.exec(contentType)?.[1] ?? "utf-8";
   let decoder: TextDecoder;
   try {
-    decoder = new TextDecoder(charset);
+    decoder = new TextDecoder(charset, { fatal: true });
   } catch {
     throw new MudabParseError(`${request}: unsupported response charset "${cutText(sanitizeServerText(charset), 100)}".`);
   }
   try {
-    return decoder.decode(body);
-  } catch (cause) {
-    // A body above Node's longest string (about 512 MiB of text) can't be decoded, whatever
-    // maxResponseBytes allows: say so, instead of a raw ERR_STRING_TOO_LONG outside the
-    // MudabError hierarchy ("Unexpected error" on the CLI).
-    throw new MudabParseError(
-      `${request}: the answer is too large to read as text (${body.byteLength} bytes; the longest ` +
-        `string is ${MAX_STRING_LENGTH} characters, whatever maxResponseBytes allows). Fetch it in ` +
-        `pages (range; --from/--count on the CLI).`,
-      { cause },
-    );
+    return { text: decoder.decode(body), replaced: 0 };
+  } catch (err) {
+    if (isStringTooLong(err)) throw tooLargeForText(request, body, err);
+    // Not valid in the charset: decode with replacement, and count what was replaced.
+    let text: string;
+    try {
+      text = new TextDecoder(decoder.encoding).decode(body);
+    } catch (again) {
+      if (isStringTooLong(again)) throw tooLargeForText(request, body, again);
+      throw again;
+    }
+    const sent = decoder.encoding === "utf-8" ? countBytes(body, REPLACEMENT_UTF8) : 0;
+    return { text, replaced: countChar(text, 0xfffd) - sent };
   }
+}
+
+/** True for V8's error for a string past its longest one (2^29 − 24 characters on 64-bit). */
+function isStringTooLong(err: unknown): boolean {
+  return (err as { code?: unknown } | null)?.code === "ERR_STRING_TOO_LONG";
+}
+
+/** The parse error for a body too large to decode into one string. */
+function tooLargeForText(request: string, body: Buffer, cause: unknown): MudabParseError {
+  return new MudabParseError(
+    `${request}: the answer is too large to read as text (${body.byteLength} bytes; the longest ` +
+      `string is ${MAX_STRING_LENGTH} characters, whatever maxResponseBytes allows). Fetch it in ` +
+      `pages (range; --from/--count on the CLI).`,
+    { cause },
+  );
+}
+
+/** U+FFFD in UTF-8. */
+const REPLACEMENT_UTF8 = Buffer.from([0xef, 0xbf, 0xbd]);
+
+/** How often `needle` occurs in `body`. */
+function countBytes(body: Buffer, needle: Buffer): number {
+  let n = 0;
+  for (let at = body.indexOf(needle); at !== -1; at = body.indexOf(needle, at + needle.length)) n++;
+  return n;
+}
+
+/** How often the UTF-16 unit `code` occurs in `text`. */
+function countChar(text: string, code: number): number {
+  let n = 0;
+  for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === code) n++;
+  return n;
+}
+
+/** A JSON escape of a surrogate, `\uD800`–`\uDFFF`, anywhere in a text (a cheap pre-check). */
+const SURROGATE_ESCAPE = /\\u[dD][89a-fA-F][0-9a-fA-F]{2}/;
+
+/** The value of the four hex digits of a `\uXXXX` escape whose `u` is at `at`, or -1. */
+function escapeAt(json: string, at: number): number {
+  if (json.charCodeAt(at) !== 0x75) return -1;
+  const hex = json.slice(at + 1, at + 5);
+  return /^[0-9a-fA-F]{4}$/.test(hex) ? parseInt(hex, 16) : -1;
+}
+
+/**
+ * `json` (decoded answer text) with every lone surrogate written as a JSON escape (`\ud800` not
+ * followed by a low-surrogate escape, or a `\udc00` not preceded by a high one) rewritten as
+ * `\ufffd`, and how many. JSON.parse would make such an escape half a character, which a JSON
+ * printer writes back as `\ud800` and `jq` refuses (the whole output with it). A raw lone
+ * surrogate cannot occur: TextDecoder never makes one. One linear pass, and only when the text
+ * holds a surrogate escape at all; the text is copied only when one is lone.
+ */
+function wellFormedEscapes(json: string): { json: string; replaced: number } {
+  if (!SURROGATE_ESCAPE.test(json)) return { json, replaced: 0 };
+  let out = "";
+  let copied = 0;
+  let replaced = 0;
+  for (let i = 0; i < json.length; i++) {
+    if (json.charCodeAt(i) !== 0x5c) continue;
+    const code = escapeAt(json, i + 1);
+    if (code < 0xd800 || code > 0xdfff) {
+      i++; // an escape of another kind (\", \\, \n, \u0041): skip its second character
+      continue;
+    }
+    const pairedLow = code <= 0xdbff && json.charCodeAt(i + 6) === 0x5c && isLowSurrogate(escapeAt(json, i + 7));
+    if (pairedLow) {
+      i += 11;
+      continue;
+    }
+    out += json.slice(copied, i) + "\\ufffd";
+    copied = i + 6;
+    replaced++;
+    i += 5;
+  }
+  return replaced === 0 ? { json, replaced } : { json: out + json.slice(copied), replaced };
+}
+
+function isLowSurrogate(code: number): boolean {
+  return code >= 0xdc00 && code <= 0xdfff;
 }
 
 /**
