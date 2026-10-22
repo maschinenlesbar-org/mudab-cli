@@ -331,7 +331,7 @@ to the CLI's own. Files:
   `--base-url` value, where a `user:password@host` typed without its scheme is still a
   credential. It is found anywhere in an argument (`urlsWithin`), not only at its start: a
   padded `" https://user:pw@host"`, one after a dash or inside a phrase is echoed by a refusal
-  (a `--compartment`, a `--base-url`), by commander or as a surplus argument just the same. The log replaces them in each record's *message*,
+  (a `--compartment`, a `--base-url`), by commander or as a surplus argument just the same. Each `://` is found with `indexOf` and its scheme by walking back, so the search stays linear in a long argument, and at most 64 URLs are read from one argument. The log replaces them in each record's *message*,
   before the record is cut and escaped, and writes it to the raw stderr: the frame (time,
   level, topic) is never touched, and a password with DEL, C1 or bidi characters is matched
   in its raw form. `redactUrl` (exported) falls back to the same

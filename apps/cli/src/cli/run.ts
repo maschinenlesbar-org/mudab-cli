@@ -211,7 +211,11 @@ export function redactionFor(argv: readonly string[]): Redaction {
 }
 
 /** Where a scheme (`https://`) starts inside a value: anywhere, not only at its start. */
-const SCHEME_START = /[A-Za-z][A-Za-z0-9+.-]*:\/\//g;
+/** The most URLs `urlsWithin` reads inside one argument, after the one it may start with. */
+const MAX_URLS_WITHIN = 64;
+
+/** A character a URL scheme may hold after its first letter. */
+const SCHEME_CHAR = /[A-Za-z0-9+.-]/;
 
 /**
  * `value` and the rest of it from each place a URL starts inside it, for `credentialsIn`
@@ -219,10 +223,18 @@ const SCHEME_START = /[A-Za-z][A-Za-z0-9+.-]*:\/\//g;
  * `--compartment`, which the library quotes and commander repeats, a surplus argument, an
  * unknown command — may hold a URL padded (`" https://user:pw@host"`), after a dash or inside
  * a phrase: its userinfo is redacted all the same.
+ * Each `://` is found with indexOf and its scheme by walking back, never by a pattern retried
+ * at every position (quadratic in a long argument); at most MAX_URLS_WITHIN are read from one
+ * argument, since each is parsed whole.
  */
 function urlsWithin(value: string): string[] {
   const found = [value];
-  for (const match of value.matchAll(SCHEME_START)) if (match.index > 0) found.push(value.slice(match.index));
+  for (let at = value.indexOf("://"); at !== -1 && found.length <= MAX_URLS_WITHIN; at = value.indexOf("://", at + 3)) {
+    let start = at;
+    while (start > 0 && SCHEME_CHAR.test(value[start - 1] as string)) start--;
+    while (start < at && !/[A-Za-z]/.test(value[start] as string)) start++;
+    if (start > 0 && start < at) found.push(value.slice(start));
+  }
   return found;
 }
 
