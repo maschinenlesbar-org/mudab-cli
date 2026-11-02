@@ -1,7 +1,16 @@
 import { test } from "node:test";
 import { TextDecoder } from "node:util";
 import assert from "node:assert/strict";
-import { RequestEngine, assertHeaderValue, bigIntegerKeysOption, cleartextProblem, firstInexactNumber, parseRetryAfter, scanNumbers } from "../src/engine.js";
+import {
+  RequestEngine,
+  assertHeaderValue,
+  bigIntegerKeysOption,
+  cleartextProblem,
+  firstInexactNumber,
+  parseRetryAfter,
+  sanitizeServerText,
+  scanNumbers,
+} from "../src/engine.js";
 import { headerNameProblem, headerValueProblem } from "../src/validate.js";
 import { MudabApiError, MudabNetworkError, MudabParseError, MudabValidationError, cutText, redactUrl, toWellFormed } from "../src/errors.js";
 import { MudabClient } from "../src/client.js";
@@ -827,4 +836,44 @@ test("server text in an API error's message is one clean line: no line break, es
   const mt = makeMockTransport(() => rawResponse("oops\n‮evil\u001b[2J", "text/plain", 500));
   await assert.rejects(new RequestEngine({ transport: mt.transport }).postJson("/x", {}), (err: unknown) =>
     err instanceof MudabApiError && err.detail === "oops evil" && err.body === "oops\n‮evil\u001b[2J");
+});
+
+test("a control string ends at another introducer, so its regex is linear in the text", () => {
+  // The body of a control string admitted the introducers that start one: an unterminated run of
+  // them was matched from each to the end of the text (100 000 x U+009D took about 16 s). Now the
+  // body ends at another introducer: the first one is dropped by the filter, the second string
+  // as a whole, and the printable text between them stays.
+  const ESC = String.fromCharCode(0x1b);
+  const BEL = String.fromCharCode(0x07);
+  const OSC8 = String.fromCharCode(0x9d);
+  const ST8 = String.fromCharCode(0x9c);
+  assert.equal(sanitizeServerText(`a${OSC8}0;x${OSC8}0;t${ST8}b`), "a0;xb");
+  assert.equal(sanitizeServerText(`a${ESC}]0;x${ESC}]0;t${BEL}b`), "a0;xb");
+  // A terminated control string still goes whole.
+  assert.equal(sanitizeServerText(`a${OSC8}0;title${ST8}b ${ESC}]0;t${BEL}c`), "ab c");
+});
+
+test("an error answer of unterminated control-string introducers is cleaned in linear time (security audit 2026-10-27)", async () => {
+  const elapsed = async (work: () => Promise<unknown>): Promise<number> => {
+    const start = performance.now();
+    await work();
+    return performance.now() - start;
+  };
+  for (const opener of ["\\u009d", "\\u0090", "\\u0098", "\\u009e", "\\u009f", "\\u001b]"]) {
+    const message = `"${opener.repeat(100_000)} tail"`;
+    // A JSON error detail of a non-2xx answer.
+    const e = new RequestEngine({ maxRetries: 0, transport: async () => rawResponse(`{"message":${message}}`, "application/json", 500) });
+    let ms = await elapsed(() =>
+      assert.rejects(e.postJson("/STATION_SMALL", {}), (err: unknown) => {
+        assert.ok(err instanceof MudabApiError && /^HTTP 500 /.test(err.message), String(err));
+        assert.doesNotMatch(err.message, /[\u0000-\u001f\u007f-\u009f]/, `${opener}: a control character in the message`);
+        return true;
+      }),
+    );
+    assert.ok(ms < 1000, `${opener}, 500: ${Math.round(ms)} ms`);
+    // The messages of an error envelope sent with 200.
+    const c = new MudabClient({ maxRetries: 0, transport: async () => rawResponse(`{"errors":[{"message":${message}}]}`, "application/json") });
+    ms = await elapsed(() => assert.rejects(c.stations({ all: true }), MudabApiError));
+    assert.ok(ms < 1000, `${opener}, envelope: ${Math.round(ms)} ms`);
+  }
 });

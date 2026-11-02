@@ -192,10 +192,13 @@ const FORMAT_CHAR = /\p{Cf}/u;
  * up to BEL or ST, or their 8-bit forms) or a short `ESC` sequence. Dropping only the
  * control bytes left the printable rest behind (`ESC [31m` became `[31m`). An unterminated
  * control string is left to the per-character filter, so it cannot swallow the rest of the
- * message. Written with escapes, so the source holds no control bytes.
+ * message. A control string's body ends at an ESC or at another introducer: with the
+ * introducers allowed inside it, an unterminated run of them was matched from each one to the
+ * end of the text, quadratic (100 000 x U+009D took 16 s). Written with escapes, so the source
+ * holds no control bytes.
  */
 const ESCAPE_SEQUENCE =
-  /(?:\u001b\[|\u009b)[\u0030-\u003f]*[\u0020-\u002f]*[\u0040-\u007e]|(?:\u001b[\]PX^_]|[\u0090\u0098\u009d-\u009f])[^\u0007\u001b\u009c]*(?:\u0007|\u001b\\|\u009c)|\u001b[\u0020-\u002f]*[\u0030-\u007e]/g;
+  /(?:\u001b\[|\u009b)[\u0030-\u003f]*[\u0020-\u002f]*[\u0040-\u007e]|(?:\u001b[\]PX^_]|[\u0090\u0098\u009d-\u009f])[^\u0007\u001b\u0090\u0098\u009c-\u009f]*(?:\u0007|\u001b\\|\u009c)|\u001b[\u0020-\u002f]*[\u0030-\u007e]/g;
 
 /**
  * Make a string that originates in an attacker-controlled response — an error `detail`, a
