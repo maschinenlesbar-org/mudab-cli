@@ -606,3 +606,14 @@ test("the redaction of stdout is linear in the answer when --base-url carries cr
   assert.equal(await run(["--base-url", "https://alice:s3cret-Pw@mirror.example", "--compact", "stations", "--all"], echo.deps), 0);
   assert.match(echo.out.join("\n"), /"see -https:\/\/\*\*\*@h\/x and ftp:\/\/\*\*\*@w\?q, mail@example\.org"/);
 });
+
+test("the redaction of stdout hides the userinfo of a URL glued onto the one before it (security audit 2026-10-27, B2)", async () => {
+  // The linear pass read the first URL's authority up to the second `://` and searched on after
+  // it, so the second URL's userinfo reached stdout; the scheme regex it replaced redacted both.
+  const value = "https://host://u:p1@h and https://u:p2@x://v:q3@w";
+  const cli = makeCli(() => rawResponse(`{"V_STATION_SMALL":[{"STATNAME_ST":${JSON.stringify(value)}}]}`, "application/json"));
+  assert.equal(await run(["--base-url", "https://alice:s3cret-Pw@mirror.example", "--compact", "stations", "--all"], cli.deps), 0, cli.err.join("\n"));
+  const out = cli.out.join("\n");
+  assert.ok(out.includes("https://host://***@h and https://***@x://***@w"), out);
+  for (const secret of ["u:p1", "u:p2", "v:q3"]) assert.ok(!out.includes(secret), out);
+});
