@@ -278,7 +278,9 @@ to the CLI's own. Files:
   or the next introducer, so the pattern is linear in the text) dropped, then C0, C1, DEL and every format
   character (bidi controls, zero-width characters, the soft hyphen), and whitespace folded to one
   space, so `err.message` is one clean line a library caller can print as it is (a forged
-  `Error:` line, `[31m` remnants or a live RLI can't get through). Echoed values and server text are cut at 500 characters (`cutForMessage`,
+  `Error:` line, `[31m` remnants or a live RLI can't get through). It reads at most the first
+  16 384 characters of the text (`serverTextForMessage` too) and is linear in them, so a large
+  error body costs neither seconds nor the heap. Echoed values and server text are cut at 500 characters (`cutForMessage`,
   `MAX_MESSAGE_VALUE_LENGTH`, exported), and so is every other value an own message quotes
   (a transport's error text, a redirect target — `location` keeps it whole —, a header name,
   a base URL's scheme), so `err.message` stays bounded for a library caller; every cut is made by `cutText` (exported), which never

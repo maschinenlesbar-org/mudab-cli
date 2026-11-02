@@ -183,8 +183,19 @@ export function parseRetryAfter(
 /** Longest error `detail` we keep — a hostile body must not fill the terminal. */
 const MAX_DETAIL_LENGTH = 200;
 
-/** Unicode General Category Cf (format): bidi controls, zero-width characters, U+00AD, U+FEFF, … */
-const FORMAT_CHAR = /\p{Cf}/u;
+/**
+ * The most server text (in UTF-16 units) `sanitizeServerText` reads; a longer text is cut first.
+ * Every message keeps far less of it (MAX_DETAIL_LENGTH, 200 characters), and cleaning all of a
+ * 4 MB error detail, one string node per character, exhausted a small heap.
+ */
+const MAX_SERVER_TEXT = 16 * 1024;
+
+/**
+ * What `sanitizeServerText` drops once the escape sequences are gone: the C0 controls but the
+ * whitespace ones (TAB to CR), DEL, the C1 controls, and every format character (General
+ * Category Cf: bidi controls, zero-width characters, U+00AD, U+FEFF, …).
+ */
+const DROPPED_CHAR = /[\u0000-\u0008\u000e-\u001f\u007f-\u009f\p{Cf}]/gu;
 
 /**
  * A whole terminal escape sequence: a CSI (`ESC [` or the 8-bit U+009B, parameters,
@@ -216,19 +227,16 @@ const ESCAPE_SEQUENCE =
  *   and the ends are trimmed, so the text stays on one line and a server cannot forge an
  *   `Error:` line of its own.
  *
+ * - Only the first MAX_SERVER_TEXT (16 384) units are read, never half a surrogate pair, and
+ *   every step is a linear regex replace: a hostile error body costs neither seconds nor the
+ *   heap. A caller that scrubs credentials does so first, so a cut never splits one.
+ *
  * The CLI's JSON output is escaped separately (`escapeControlChars` in cli/shared.ts), as
- * `JSON.stringify` alone leaves DEL, C1 and bidi characters raw. Checked by char code so the
+ * `JSON.stringify` alone leaves DEL, C1 and bidi characters raw. Written with escapes, so the
  * source stays free of control bytes.
  */
 export function sanitizeServerText(text: string): string {
-  let out = "";
-  for (const ch of text.replace(ESCAPE_SEQUENCE, "")) {
-    const n = ch.codePointAt(0) ?? 0;
-    const whitespaceControl = n >= 0x09 && n <= 0x0d;
-    if (!whitespaceControl && (n <= 0x1f || (n >= 0x7f && n <= 0x9f) || FORMAT_CHAR.test(ch))) continue;
-    out += ch;
-  }
-  return out.replace(/\s+/g, " ").trim();
+  return cutText(text, MAX_SERVER_TEXT).replace(ESCAPE_SEQUENCE, "").replace(DROPPED_CHAR, "").replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -251,16 +259,12 @@ export function isBidiControl(n: number): boolean {
 /**
  * Server text that one of the client's own messages quotes — the messages of an error list
  * sent with status 200 — made safe and short: whitespace (line breaks, U+2028/U+2029
- * included) folded to one space, so it stays on one line; control characters
- * (`sanitizeServerText`) and the bidi controls dropped; trimmed and cut at `max`
- * characters (200). The error's `body` keeps the server's text as it came.
+ * included) folded to one space, so it stays on one line; control characters and the bidi
+ * controls dropped (`sanitizeServerText`, which reads at most the first 16 384 units); trimmed
+ * and cut at `max` characters (200). The error's `body` keeps the server's text as it came.
  */
 export function serverTextForMessage(text: string, max = MAX_DETAIL_LENGTH): string {
-  let clean = "";
-  for (const ch of sanitizeServerText(text.replace(/\s+/g, " "))) {
-    if (!isBidiControl(ch.codePointAt(0) ?? 0)) clean += ch;
-  }
-  clean = clean.trim();
+  const clean = sanitizeServerText(cutText(text, MAX_SERVER_TEXT).replace(/\s+/g, " "));
   return clean.length > max ? `${cutText(clean, max)}…` : clean;
 }
 
@@ -875,7 +879,8 @@ export class RequestEngine {
       // body so the failure isn't context-free; skip HTML pages (start with "<").
       // Strip control bytes too — `\s+` collapses whitespace but leaves ESC/C0
       // intact, so a hostile plain-text body could still smuggle ANSI/OSC escapes.
-      const snippet = sanitizeServerText(text.trim().replace(/\s+/g, " "));
+      // sanitizeServerText folds the whitespace and reads a bounded prefix, never the whole body.
+      const snippet = sanitizeServerText(text.trimStart());
       if (snippet.length > 0 && !snippet.startsWith("<")) {
         detail = snippet.length > MAX_DETAIL_LENGTH ? `${cutText(snippet, MAX_DETAIL_LENGTH)}…` : snippet;
       }

@@ -10,6 +10,7 @@ import {
   parseRetryAfter,
   sanitizeServerText,
   scanNumbers,
+  serverTextForMessage,
 } from "../src/engine.js";
 import { headerNameProblem, headerValueProblem } from "../src/validate.js";
 import { MudabApiError, MudabNetworkError, MudabParseError, MudabValidationError, cutText, redactUrl, toWellFormed } from "../src/errors.js";
@@ -876,4 +877,28 @@ test("an error answer of unterminated control-string introducers is cleaned in l
     ms = await elapsed(() => assert.rejects(c.stations({ all: true }), MudabApiError));
     assert.ok(ms < 1000, `${opener}, envelope: ${Math.round(ms)} ms`);
   }
+});
+
+test("sanitizeServerText reads a bounded prefix and drops what the per-character filter dropped", () => {
+  // The filter it replaces, one character at a time: C0 but TAB to CR, DEL, C1 and Cf go.
+  const perCharacter = (text: string): string =>
+    [...text]
+      .filter((ch) => {
+        const n = ch.codePointAt(0) ?? 0;
+        return (n >= 0x09 && n <= 0x0d) || !(n <= 0x1f || (n >= 0x7f && n <= 0x9f) || /\p{Cf}/u.test(ch));
+      })
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim();
+  const every = Array.from({ length: 0x3000 }, (_, i) => String.fromCharCode(i)).join("") + "\u{1f600}\u{e0001}\ud800x";
+  for (let at = 0; at < every.length; at += 512) {
+    const piece = every.slice(at, at + 512).replace(/[\u001b\u0090\u0098\u009b-\u009f]/g, "");
+    assert.equal(sanitizeServerText(piece), perCharacter(piece), `from U+${at.toString(16)}`);
+  }
+  // At most 16 384 units of the text are read, never half a surrogate pair.
+  assert.equal(sanitizeServerText("x".repeat(100_000)).length, 16_384);
+  assert.equal(sanitizeServerText(`${"x".repeat(16_383)}\u{1f600}`), "x".repeat(16_383));
+  // serverTextForMessage reads the same prefix, folds and cuts it.
+  assert.equal(serverTextForMessage(`a\n\u2067b\u2069 ${"x ".repeat(1_000_000)}`), `a b ${"x ".repeat(98)}…`);
+  assert.equal(serverTextForMessage("y".repeat(100_000), 1_000_000).length, 16_384);
 });
