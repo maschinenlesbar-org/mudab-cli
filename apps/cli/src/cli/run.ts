@@ -18,6 +18,7 @@ import {
   echoedCredentialForms,
   redactCredentials,
   redactSecrets,
+  redactUrlUserinfo,
 } from "@maschinenlesbar.org/mudab-client/internal/errors";
 
 /**
@@ -114,15 +115,6 @@ function escapeCommanderError(message: string): string {
 }
 
 /**
- * Replace the userinfo of every URL in `text` with `***`, the form `redactUrl` gives
- * (`https://user:secret@host` becomes `https://***@host`). Text-based, so it also
- * covers a URL that does not parse; a backstop behind the exact-string redaction.
- */
-export function redactUserinfo(text: string): string {
-  return text.replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/?#']*@/gi, "$1***@");
-}
-
-/**
  * The names (long and short) of the program's own options that require a value
  * (`--user-agent`). Only the program's: commander takes them out of argv wherever they
  * stand, before a subcommand sees the rest, so a subcommand's `--lang` never swallows
@@ -206,7 +198,7 @@ export function redactionFor(argv: readonly string[]): Redaction {
   // Longest first, so a password never leaves half of the user:password around it.
   const echoedList = [...echoed].sort((a, b) => b.length - a.length);
   const passwordList = [...passwords].sort((a, b) => b.length - a.length);
-  const out = (text: string): string => redactSecrets(redactUserinfo(redactCredentials(text, list)), echoedList);
+  const out = (text: string): string => redactSecrets(redactUrlUserinfo(redactCredentials(text, list)), echoedList);
   return { out, err: (text) => redactSecrets(out(text), passwordList) };
 }
 

@@ -13,7 +13,17 @@ import {
   serverTextForMessage,
 } from "../src/engine.js";
 import { headerNameProblem, headerValueProblem } from "../src/validate.js";
-import { MudabApiError, MudabNetworkError, MudabParseError, MudabValidationError, cutText, redactUrl, toWellFormed } from "../src/errors.js";
+import {
+  MudabApiError,
+  MudabNetworkError,
+  MudabParseError,
+  MudabValidationError,
+  TextBuilder,
+  cutText,
+  redactUrl,
+  redactUrlUserinfo,
+  toWellFormed,
+} from "../src/errors.js";
 import { MudabClient } from "../src/client.js";
 import { makeMockTransport, jsonResponse, rawResponse, jsonBodyOf } from "./helpers.js";
 import * as fx from "./fixtures.js";
@@ -901,4 +911,33 @@ test("sanitizeServerText reads a bounded prefix and drops what the per-character
   // serverTextForMessage reads the same prefix, folds and cuts it.
   assert.equal(serverTextForMessage(`a\n\u2067b\u2069 ${"x ".repeat(1_000_000)}`), `a b ${"x ".repeat(98)}…`);
   assert.equal(serverTextForMessage("y".repeat(100_000), 1_000_000).length, 16_384);
+});
+
+test("redactUrlUserinfo hides every URL's userinfo in one linear pass, however many URLs", () => {
+  const elapsed = (work: () => unknown): number => {
+    const start = performance.now();
+    work();
+    return performance.now() - start;
+  };
+  // The old pattern took about 3 s on this; the linear pass takes milliseconds.
+  assert.ok(elapsed(() => redactUrlUserinfo("a.".repeat(30_000))) < 1000);
+  assert.equal(redactUrlUserinfo("a -https://u:p@h/x and x-ftp://v@w?q, mail@example.org"), "a -https://***@h/x and x-ftp://***@w?q, mail@example.org");
+  assert.equal(redactUrlUserinfo("argument 'ftp://user:s3cret@h.example' is invalid; also http://a@b@c.example/x?y=u@v"), "argument 'ftp://***@h.example' is invalid; also http://***@c.example/x?y=u@v");
+  assert.equal(redactUrlUserinfo("1://u:p@h ://u:p@h"), "1://u:p@h ://u:p@h");
+  assert.equal(redactUrlUserinfo("https://h/p?u=a@b"), "https://h/p?u=a@b");
+  for (const text of ["a".repeat(1_000_000), "a.".repeat(500_000), "://".repeat(100_000), `https://${"u".repeat(1_000_000)}`]) {
+    assert.equal(redactUrlUserinfo(text), text);
+  }
+  const many = redactUrlUserinfo("https://u:p@h ".repeat(100_000));
+  assert.equal(many, "https://***@h ".repeat(100_000));
+});
+
+test("a TextBuilder joins its pieces in order across batches", () => {
+  const b = new TextBuilder();
+  const expected: string[] = [];
+  for (let i = 0; i < 40_000; i++) {
+    b.push(String(i), ",");
+    expected.push(String(i), ",");
+  }
+  assert.equal(b.toString(), expected.join(""));
 });

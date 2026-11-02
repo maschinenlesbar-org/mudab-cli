@@ -587,3 +587,22 @@ test("the URL search of the redaction is linear: a long argument, with or withou
     assert.ok(took < 1000, `${big.length} characters took ${Math.round(took)} ms`);
   }
 });
+
+test("the redaction of stdout is linear in the answer when --base-url carries credentials (security audit 2026-10-27)", async () => {
+  // With a URL with userinfo in argv, every stdout text is redacted. A row of 200 000
+  // characters of `a.a.…` took about 8 s with the scheme regex; the linear pass takes milliseconds.
+  const value = "a.".repeat(100_000);
+  const cli = makeCli(() => rawResponse(`{"V_STATION_SMALL":[{"STATNAME_ST":${JSON.stringify(value)}}]}`, "application/json"));
+  const start = performance.now();
+  const code = await run(["--base-url", "https://alice:s3cret-Pw@mirror.example", "--compact", "stations", "--all"], cli.deps);
+  const ms = performance.now() - start;
+  assert.equal(code, 0, cli.err.join("\n"));
+  assert.ok(cli.out.join("\n").includes(value));
+  assert.ok(ms < 1500, `${Math.round(ms)} ms`);
+  // The userinfo of a URL in the data is still replaced, the rest of the text left alone.
+  const echo = makeCli(() =>
+    rawResponse('{"V_STATION_SMALL":[{"STATNAME_ST":"see -https://bob:x@h/x and ftp://v@w?q, mail@example.org"}]}', "application/json"),
+  );
+  assert.equal(await run(["--base-url", "https://alice:s3cret-Pw@mirror.example", "--compact", "stations", "--all"], echo.deps), 0);
+  assert.match(echo.out.join("\n"), /"see -https:\/\/\*\*\*@h\/x and ftp:\/\/\*\*\*@w\?q, mail@example\.org"/);
+});
