@@ -130,6 +130,20 @@ test("the number check skips strings and costs one pass over the text", async ()
   assert.equal((await f.postJson<number[]>("/x", {})).length, 200_000);
 });
 
+test("a number with a long run of zeros is checked in linear time (class A)", async () => {
+  // decimalOf stripped trailing zeros with /0+$/, which tries a match at every zero of a run that
+  // doesn't end the text: 1.<100 000 zeros>1e300 took about 15 s, past --timeout (the scan runs
+  // once the answer is in). Counted with index loops, it takes milliseconds.
+  const literal = `1.${"0".repeat(100_000)}1e300`;
+  let found: string | undefined;
+  assert.ok(elapsed(() => (found = firstInexactNumber(`[${literal}]`))) < 1000);
+  assert.equal(found, literal);
+  // Leading and trailing zeros still count as before.
+  assert.equal(firstInexactNumber("[0001e400]"), "0001e400");
+  assert.equal(firstInexactNumber(`[9007199254740992${"0".repeat(50_000)}e-50000]`), undefined);
+  assert.equal(firstInexactNumber(`[00000.${"0".repeat(50_000)}3e-324]`), `00000.${"0".repeat(50_000)}3e-324`);
+});
+
 test("a non-2xx surfaces as a MudabApiError with the parsed detail", async () => {
   const mt = makeMockTransport(() => jsonResponse({ message: "bad column" }, 400));
   const e = new RequestEngine({ transport: mt.transport });
