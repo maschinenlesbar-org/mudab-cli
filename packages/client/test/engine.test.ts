@@ -21,6 +21,7 @@ import {
   MudabValidationError,
   TextBuilder,
   cutText,
+  echoedCredentialForms,
   redactUrl,
   redactUrlUserinfo,
   toWellFormed,
@@ -1141,5 +1142,30 @@ test("a credential in a redirect's Location is scrubbed, in its path and its que
     assert.ok(err instanceof MudabApiError && /^HTTP 302 /.test(err.message), String(err));
     const seen = percentDecoded(everythingOf(err));
     for (const secret of ECHO_SECRETS) assert.ok(!seen.includes(secret), `${location}: ${secret} in ${seen.slice(0, 2000)}`);
+  }
+});
+
+test("echoedCredentialForms treats a userinfo without a password as a token (Basic `TOKEN:`) (class E)", () => {
+  const basic = (pair: string): string => Buffer.from(pair, "utf8").toString("base64");
+  assert.deepEqual(echoedCredentialForms("alice:s3cret"), [basic("alice:s3cret"), "alice:s3cret", "s3cret"]);
+  assert.deepEqual(echoedCredentialForms("T0ken"), [basic("T0ken:"), "T0ken:", "T0ken"]);
+  assert.deepEqual(echoedCredentialForms("T0ken:"), [basic("T0ken:"), "T0ken:", "T0ken"]);
+  assert.deepEqual(echoedCredentialForms("T%C3%B6k"), [basic("Tök:"), "Tök:"]); // short: not alone
+  assert.deepEqual(echoedCredentialForms(":pw12"), [basic(":pw12"), ":pw12", "pw12"]);
+  assert.deepEqual(echoedCredentialForms(""), []);
+  assert.deepEqual(echoedCredentialForms(":"), []);
+});
+
+test("a token in the base URL (a userinfo without a password) is scrubbed from library errors in every echoed form (class E)", async () => {
+  const token = "T0kenS3cret";
+  for (const base of [`https://${token}@mirror.example`, `https://${token}:@mirror.example`]) {
+    const basic = Buffer.from(`${token}:`, "utf8").toString("base64");
+    for (const echo of [`bad token ${token}`, `Authorization: Basic ${basic}`, `login ${token}: refused`]) {
+      const client = new MudabClient({ baseUrl: base, transport: async () => rawResponse(JSON.stringify({ message: echo }), "application/json", 401), maxRetries: 0 });
+      const err = await client.stations().catch((caught: unknown) => caught);
+      assert.ok(err instanceof MudabApiError, String(err));
+      const seen = everythingOf(err);
+      for (const secret of [token, basic]) assert.ok(!seen.includes(secret), `${base} ${echo}: ${seen.slice(0, 1000)}`);
+    }
   }
 });

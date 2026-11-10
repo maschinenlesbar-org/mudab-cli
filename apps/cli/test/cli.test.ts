@@ -617,3 +617,19 @@ test("the redaction of stdout hides the userinfo of a URL glued onto the one bef
   assert.ok(out.includes("https://host://***@h and https://***@x://***@w"), out);
   for (const secret of ["u:p1", "u:p2", "v:q3"]) assert.ok(!out.includes(secret), out);
 });
+
+test("a token in --base-url (a userinfo without a password) is redacted from what the CLI prints (class E)", async () => {
+  // Node sends `https://T0ken@host` as Basic `T0ken:`; echoed back, neither that value, `T0ken:`
+  // (stdout and stderr) nor the token alone (stderr; on stdout it may occur in the data) is printed.
+  const token = "T0kenS3cret";
+  const basic = Buffer.from(`${token}:`, "utf8").toString("base64");
+  for (const base of [`https://${token}@mirror.example`, `https://${token}:@mirror.example`]) {
+    const ok = makeCli(() => jsonResponse({ V_STATION_SMALL: [{ STATNAME_ST: `Basic ${basic} as ${token}:` }] }));
+    assert.equal(await run(["--base-url", base, "stations"], ok.deps), 0);
+    assert.ok(!ok.out.join("\n").includes(basic) && !ok.out.join("\n").includes(`${token}:`), ok.out.join("\n"));
+    const failed = makeCli(() => rawResponse(JSON.stringify({ message: `bad token ${token} (Basic ${basic})` }), "application/json", 401));
+    assert.equal(await run(["--base-url", base, "stations"], failed.deps), 1);
+    const err = failed.err.join("\n");
+    assert.ok(!err.includes(token) && !err.includes(basic), err);
+  }
+});

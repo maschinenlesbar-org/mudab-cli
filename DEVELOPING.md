@@ -358,7 +358,9 @@ to the CLI's own. Files:
   message, a field name; the start of a body that is not JSON, its content type and charset),
   transport error text and the `cause` chain — and with it the forms a server echoes it
   back in (`echoedCredentialForms`, exported): the `Authorization: Basic` value, the decoded
-  `user:password`, and the password alone from 4 characters on (`redactSecrets`, exported), each
+  `user:password`, and the password alone from 4 characters on — for a userinfo without a
+  password (`https://TOKEN@host`, `TOKEN:@host`) the user name, a token, which Node sends as
+  Basic `TOKEN:` (`redactSecrets`, exported), each
   matched whole (a password with an inner space too), percent-encoded as in a URL and escaped as
   in a JSON string. Server text is scrubbed *before* it is cut or quoted, and decoded text
   (a JSON `detail`) again after decoding: a JSON escape (`\"`, `\u00e4`) hides an echo from the
@@ -366,7 +368,7 @@ to the CLI's own. Files:
   decoded text still holds an echoed form behind an escape; then it is the decoded JSON written
   again (`JSON.stringify`) with the form replaced, and `""` for such a body too deeply nested to
   write again (`scrubBody`).
-  The CLI replaces the Basic value and the pair on stdout and stderr, the bare password on
+  The CLI replaces the Basic value and the pair on stdout and stderr, the bare password (or token) on
   stderr only (on stdout a short password may well occur in the data). Whatever a custom transport throws reaches
   the caller as a `MudabNetworkError` (the original, scrubbed, as `cause`).
 - **Printing JSON** (`renderJson`, `shared.ts`): `escapeControlChars` writes the characters
