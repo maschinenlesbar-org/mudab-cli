@@ -53,6 +53,12 @@ const API_EXIT = 1;
 const REDIRECT_ERROR = /^HTTP 302 /;
 /** The log program, as in `ERROR [<bin>.api]`. */
 const PROGRAM = "mudab";
+/** The method of `call`'s request, as the log names it (`WARN [<bin>.api] GET <url>: …`). */
+const METHOD = "POST"; // every MUDAB call is a POST
+/** The global options that point the bin at the mock (default: `--base-url`). */
+const hostArgv = (base: string): string[] => ["--base-url", base];
+/** The status and body the bin's mock answers the request for `path` with (default: the test's; a call that reads something else first answers that here). */
+const answerFor = (_path: string, status: number, body: Buffer): [number, Buffer] => [status, body];
 // --------------------------------------------------------------------------------------
 
 // These tests start the built CLI as a process: 30 s instead of the suite's 5 s.
@@ -106,10 +112,11 @@ test("P28: an error answer of unterminated control-string introducers is cleaned
 
 /** Serve `status` and `body` to one run of the bin with a heap of `heapMb`, then stop. */
 async function runWithAnswer(status: number, body: Buffer, heapMb: number): Promise<{ code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string }> {
-  const server = http.createServer((_req, res) => {
-    res.statusCode = status;
+  const server = http.createServer((req, res) => {
+    const [answerStatus, answerBody] = answerFor(req.url ?? "", status, body);
+    res.statusCode = answerStatus;
     res.setHeader("content-type", "application/json");
-    res.end(body);
+    res.end(answerBody);
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   try {
@@ -117,7 +124,7 @@ async function runWithAnswer(status: number, body: Buffer, heapMb: number): Prom
     return await new Promise((resolve) => {
       const child = spawn(
         process.execPath,
-        [`--max-old-space-size=${heapMb}`, BIN, "--base-url", base, "--max-retries", "0", ...call],
+        [`--max-old-space-size=${heapMb}`, BIN, ...hostArgv(base), "--max-retries", "0", ...call],
         { stdio: ["ignore", "pipe", "pipe"], env: { PATH: process.env.PATH ?? "" } },
       );
       let stdout = "";
@@ -149,15 +156,13 @@ test("P28: a 16 MB error message ends in one ERROR record within a small heap", 
   assert.ok((records[0] ?? "").length < 5000, "the record is cut");
 });
 
-// Skipped here: the body reads the WARN of a GET, every MUDAB call is a POST, and no adapter switch
-// names the method. The same case, with POST, runs in hostile-error-answers.test.ts.
-test("P28: an answer of millions of lone surrogate escapes is repaired within a small heap", { ...STARTS_A_PROCESS, skip: "MUDAB is POST-only; the WARN pattern names GET (hostile-error-answers.test.ts runs it with POST)" }, async () => {
+test("P28: an answer of millions of lone surrogate escapes is repaired within a small heap", STARTS_A_PROCESS, async () => {
   // 6 million repairs (36 MB): one `+=` each exhausted a 128 MB heap; batched, 96 MB suffice.
   const n = 6_000_000;
   const run = await runWithAnswer(200, Buffer.from(bodyWith(`"${"\\ud800".repeat(n)}"`)), 128);
   noCrash(run, "lone surrogates");
   assert.equal(run.code, 0, run.stderr.slice(0, 500));
-  assert.match(run.stderr, new RegExp(`WARN  \\[${PROGRAM}\\.api\\] GET \\S+: ${n} characters of the answer were not valid text`));
+  assert.match(run.stderr, new RegExp(`WARN  \\[${PROGRAM}\\.api\\] ${METHOD} \\S+: ${n} characters of the answer were not valid text`));
 });
 
 // A password with characters a JSON writer escapes (a quote) or may write as \u00XX (an umlaut),

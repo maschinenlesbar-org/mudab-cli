@@ -79,13 +79,3 @@ test("a 16 MB message in an error envelope sent with 200 ends in one ERROR recor
   const run = await runWithAnswer(200, "application/json", Buffer.from(`{"errors":[{"message":"${"x ".repeat(8_000_000)}"}]}`), 128);
   oneErrorRecord(run, "envelope", /ERROR \[mudab\.api\] /);
 });
-
-test("an answer of millions of lone surrogate escapes is repaired within a small heap", STARTS_A_PROCESS, async () => {
-  // 6 million repairs (36 MB): one `+=` each made a rope node and exhausted a 128 MB heap.
-  const n = 6_000_000;
-  const run = await runWithAnswer(200, "application/json", Buffer.from(`{"V_STATION_SMALL":[{"STATNAME_ST":"${"\\ud800".repeat(n)}"}]}`), 128);
-  assert.notEqual(run.signal, "SIGABRT", "aborted");
-  assert.doesNotMatch(run.stderr, /FATAL ERROR|heap out of memory|Allocation failed|\n\s+at /, run.stderr.slice(0, 500));
-  assert.equal(run.code, 0, run.stderr.slice(0, 500));
-  assert.match(run.stderr, new RegExp(`WARN  \\[mudab\\.api\\] POST \\S+: ${n} characters of the answer were not valid text`));
-});
