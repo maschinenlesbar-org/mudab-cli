@@ -92,6 +92,10 @@ test("baseUrlProblem names what is wrong, without repeating the value", () => {
     ["", "Expected an absolute http(s) URL."],
     ["not a url", "Expected an absolute http(s) URL."],
     ["ftp://h.example/x", 'Unsupported scheme "ftp:". Expected an http(s) URL.'],
+    // A value typed without its scheme parses with the user name as the scheme: never named (F5).
+    ["my_user:pw@h.example", "Expected an absolute http(s) URL."],
+    ["T0kenS3cret:@h.example", "Expected an absolute http(s) URL."],
+    ["alice:s3cret@h.example/x", "Expected an absolute http(s) URL."],
     ["https://h.example/x?a=1", "A base URL cannot have a query (?) or fragment (#)."],
     ["https://h.example/x#f", "A base URL cannot have a query (?) or fragment (#)."],
     [" https://h.example/x", "A base URL cannot have surrounding whitespace."],

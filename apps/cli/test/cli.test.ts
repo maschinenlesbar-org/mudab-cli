@@ -653,3 +653,25 @@ test("a refused --base-url with a backslash or without exactly // is a usage err
     assert.match(all, /invalid/, base);
   }
 });
+
+test("a --base-url typed without its scheme never shows its user name, token or password, in any case (F5)", async () => {
+  // `T0kenS3cret:@h` parses as a URL whose scheme is the token, lower-cased: the message named
+  // `Unsupported scheme "t0kens3cret:"`, which no exact-string redaction matches.
+  for (const [base, secrets] of [
+    ["T0kenS3cret:@h.example", ["T0kenS3cret", "t0kens3cret"]],
+    ["my_user:pw-S3cret@h.example", ["pw-S3cret", "my_user:pw"]],
+    ["Alice:S3cretPw@h.example", ["S3cretPw", "alice:", "s3cretpw"]],
+  ] as const) {
+    const cli = makeCli(() => jsonResponse(fx.stations));
+    assert.equal(await run(["--base-url", base, "stations"], cli.deps), 2, base);
+    assert.equal(cli.mt.calls.length, 0, base);
+    const all = cli.err.join("\n") + cli.out.join("\n");
+    for (const secret of secrets) assert.ok(!all.toLowerCase().includes(secret.toLowerCase()), `${base}: ${all}`);
+    assert.match(all, /Expected an absolute http\(s\) URL\./, base);
+    assert.throws(
+      () => new MudabClient({ baseUrl: base }),
+      (err: unknown) => err instanceof Error && err.message === "Invalid baseUrl: Expected an absolute http(s) URL.",
+      base,
+    );
+  }
+});

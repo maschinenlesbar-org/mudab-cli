@@ -149,7 +149,9 @@ export const headerNameProblem: Problem<string> = (name) =>
  * dropped, the path percent-encoded where WHATWG does it), the reading every check makes.
  *
  * Userinfo (`user:pw@`) is allowed: it is sent as Basic auth and redacted in every
- * error message. A `%` in it must start a valid escape (`%25` for a literal one), as
+ * error message. A scheme is named (`Unsupported scheme "ftp:"`) only when the value spells one
+ * (`<scheme>://`): a `user:password@host` typed without its scheme parses with the user name as
+ * its scheme. A `%` in it must start a valid escape (`%25` for a literal one), as
  * Node decodes it for the Authorization header. The reasons never repeat the value, so a credential in it cannot
  * reach a message. The engine enforces it (`Invalid baseUrl: <reason>`), and the
  * CLI's `--base-url` parser calls it.
@@ -163,6 +165,10 @@ export const baseUrlProblem: Problem<string> = (value) => {
     return "Expected an absolute http(s) URL.";
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
+    // `user:password@host` without a scheme parses as a URL whose scheme is the user name
+    // ("t0kens3cret:"), lower-cased, which the CLI's exact-string redaction can't match: name a
+    // scheme only when the value spells one, `<scheme>://`.
+    if (!/^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(value)) return "Expected an absolute http(s) URL.";
     return `Unsupported scheme "${cutForMessage(url.protocol)}". Expected an http(s) URL.`;
   }
   if (/[?#]/.test(value)) return "A base URL cannot have a query (?) or fragment (#).";
