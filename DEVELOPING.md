@@ -358,7 +358,9 @@ to the CLI's own. Files:
   check. Userinfo is kept
   for the request and redacted (`redactUrl`) in every error message.
 - **No credential in the CLI's output:** `run.ts` (`redactionFor`, `withRedactedOutput`) takes the exact
-  userinfo of every URL argument (`credentialsIn`, exported) and replaces it with `***` in
+  userinfo of every URL argument (`credentialsIn`, exported; a base URL is read as a URL however its scheme is typed,
+`typedUrlCredentials`: missing, `alice:pw@host`, or mistyped, `http//alice:pw@host` with the
+colon left out, whose userinfo is everything between the first slashes and the last `@`) and replaces it with `***` in
   everything it prints — commander's usage errors, which echo a rejected `--base-url`
   value, and its other messages — so a password with spaces, quotes, `#`, `?` or `/` is
   caught as well as an ordinary one. Only a URL with a scheme counts (a bare
