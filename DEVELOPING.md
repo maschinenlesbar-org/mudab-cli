@@ -36,8 +36,8 @@ never `npx`), two SBOMs scoped to the `apps/cli` workspace. **release** (the onl
 the GitHub Release with `gh`. So no third-party code runs where the tarball is built or where
 the write token is. Update the tool by changing its version in `tools/sbom/package.json` and
 running `npm install --package-lock-only --ignore-scripts` there; don't chain its install into
-an npm script. `apps/cli/test/release-workflow.test.ts` reads the workflow and the lockfile and
-checks it. `publish.yml` runs `npm publish --workspace apps/cli`.
+an npm script. Conformance test P31 (`apps/cli/test/conformance-p31-release-pipeline.test.ts`)
+reads the workflow and the lockfile and checks it. `publish.yml` runs `npm publish --workspace apps/cli`.
 
 ## Layout
 
@@ -188,6 +188,17 @@ to the CLI's own. Files:
   mudab has no `-o`, so its adapter sets `HAS_OUTPUT_OPTION = false` and only the stdout case
   runs (stdout redirected to a file and cut short under `ulimit -f` exits 1 with an ERROR record
   of `mudab.output`, never 0).
+- **P28–P31** (security audit 2026-10-27, reference `create-cli-template`): P28 hostile error
+  answers (the number scan and server-text cleaning linear and memory-bounded; the base URL's
+  credential scrubbed from decoded text, from a 2xx value the client quotes — `quotedBody` is an
+  object that is not the row wrapper, whose `message` the shape error quotes — and from a
+  redirect's Location; `REDIRECT_ERROR` is `HTTP 302`, as redirects are not followed). Its
+  lone-surrogate case is skipped: the body reads the WARN of a GET and every MUDAB call is a POST;
+  `hostile-error-answers.test.ts` runs the same case with POST, next to the large plain-text and
+  error-envelope bodies. P29 base-URL credentials (a token userinfo scrubbed, a backslash and a
+  scheme without exactly `//` refused, requests to the parsed host, linear stdout redaction). P30
+  output links: no `-o`, so `HAS_OUTPUT_OPTION = false` with stand-ins for the kit's `io.ts` types,
+  and every case is skipped. P31 the release pipeline (no adapter).
 
 ## Conventions to keep
 
