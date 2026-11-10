@@ -1118,3 +1118,28 @@ test("a JSON error body keeps its spelling unless a credential hides behind an e
   assert.ok(nested instanceof MudabApiError);
   assert.ok(nested.body === "" || !nested.body.includes("\\u00e4"), nested.body.slice(0, 100));
 });
+
+test("a credential in a redirect's Location is scrubbed, in its path and its query (class D2)", async () => {
+  /** `text` with every run of percent escapes decoded where it is valid UTF-8. */
+  const percentDecoded = (text: string): string =>
+    text.replace(/(?:%[0-9a-fA-F]{2})+/g, (run) => {
+      try {
+        return decodeURIComponent(run);
+      } catch {
+        return run;
+      }
+    });
+  const locations = [
+    `https://elsewhere.example/login?user=alice&pw=${encodeURIComponent(ECHO_PW)}`,
+    `https://elsewhere.example/login?pw=${ECHO_PW}`,
+    `https://elsewhere.example/${encodeURIComponent(`alice:${ECHO_PW}`)}/x`,
+    `https://elsewhere.example/auth?basic=${ECHO_BASIC}`,
+    `/relative/${ECHO_PW}`,
+  ];
+  for (const location of locations) {
+    const err = await echoFailure({ status: 302, headers: { location }, body: Buffer.alloc(0) });
+    assert.ok(err instanceof MudabApiError && /^HTTP 302 /.test(err.message), String(err));
+    const seen = percentDecoded(everythingOf(err));
+    for (const secret of ECHO_SECRETS) assert.ok(!seen.includes(secret), `${location}: ${secret} in ${seen.slice(0, 2000)}`);
+  }
+});

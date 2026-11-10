@@ -921,7 +921,7 @@ export class RequestEngine {
     }
     // Redirects are not followed; name the target so the user can see where it points.
     const location =
-      status >= 300 && status < 400 && locationHeader ? redirectTarget(url, locationHeader) : undefined;
+      status >= 300 && status < 400 && locationHeader ? redirectTarget(url, locationHeader, (t) => this.scrub(t)) : undefined;
     return new MudabApiError({ status, url, method, body: this.scrubBody(text), detail, location, retryAfterMs });
   }
 }
@@ -1077,16 +1077,19 @@ function jsonSpellings(form: string): string[] {
 }
 
 /**
- * The absolute, printable form of a `Location` header: resolved against the request
- * URL, userinfo redacted, control characters stripped (it is server text bound for
- * stderr). An unparseable value is shown sanitised as it came.
+ * The absolute, printable form of a `Location` header: the base URL's credentials scrubbed
+ * (`scrub`) as sent, before resolving percent-encodes what is left of them in a new spelling
+ * (`'` as `%27` in a query); resolved against the request URL, userinfo redacted, control
+ * characters stripped (it is server text bound for stderr). An unparseable value is shown
+ * sanitised as it came.
  */
-function redirectTarget(requestUrl: string, location: string): string | undefined {
+function redirectTarget(requestUrl: string, location: string, scrub: (text: string) => string): string | undefined {
+  const sent = scrub(location);
   let target: string;
   try {
-    target = redactUrl(new URL(location, requestUrl).href);
+    target = redactUrl(new URL(sent, requestUrl).href);
   } catch {
-    target = location;
+    target = sent;
   }
   const clean = sanitizeServerText(target).trim();
   return clean === "" ? undefined : clean;

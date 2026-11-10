@@ -128,7 +128,8 @@ OpenAPI spec (`bundesAPI/mudab-api`) is unreliable, so trust the live behaviour:
 Redirects are **not** followed — following a cross-origin POST redirect blindly is a
 footgun, and the canonical host answers directly. A 3xx surfaces as a `MudabApiError`
 (exit 1) whose message names the target (`redirect to <url> not followed`, resolved,
-userinfo redacted, sanitised; `location` field); when `--base-url` is not the default,
+userinfo redacted, the base URL's credentials scrubbed in its path and query before it is
+resolved, sanitised; `location` field); when `--base-url` is not the default,
 the CLI adds a hint pointing at the canonical base URL.
 
 ## Testing
