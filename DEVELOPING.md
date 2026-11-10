@@ -181,7 +181,10 @@ to the CLI's own. Files:
   (`.reviews/2026-10-21-exploratory/fix-plan.md`) added P27, big and odd answers: a large flat
   answer and one full of DEL characters print within a small heap, or past V8's longest string are
   one ERROR record of `mudab.output`; a lone surrogate or invalid bytes are replaced with U+FFFD
-  and reported in a WARN of `mudab.api` (it starts the built bin, so 30 s). P26 output integrity:
+  and reported in a WARN of `mudab.api`; an answer in two million one-byte chunks is read within
+  a 256 MB heap (the built-in transport joins small chunks as they arrive, `COALESCE_CHUNKS` /
+  `COALESCE_BYTES`, so its memory follows the bytes, not the chunk count) (it starts the built
+  bin, so 30 s). P26 output integrity:
   mudab has no `-o`, so its adapter sets `HAS_OUTPUT_OPTION = false` and only the stdout case
   runs (stdout redirected to a file and cut short under `ulimit -f` exits 1 with an ERROR record
   of `mudab.output`, never 0).
