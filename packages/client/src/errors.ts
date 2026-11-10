@@ -276,6 +276,12 @@ export class MudabApiError extends MudabError {
   readonly detail: string | undefined;
   readonly url: string;
   readonly method: string;
+  /**
+   * The body as the server sent it, the base URL's credentials scrubbed. A JSON body that spells
+   * one with escapes (`\"`, `\u00e4`) is kept as its decoded JSON written again, scrubbed; such a
+   * body too deeply nested to write again is left out (""). For an error list sent with 200, the
+   * decoded answer written again (`JSON.stringify`), scrubbed.
+   */
   readonly body: string;
   readonly location: string | undefined;
   /**

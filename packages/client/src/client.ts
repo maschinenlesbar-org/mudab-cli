@@ -148,23 +148,30 @@ export function reportedErrors(res: unknown, scrub: (text: string) => string = (
   return serverTextForMessage(scrub(texts.length > 0 ? texts.join("; ") : "no message"));
 }
 
-/** Name what came back instead of the row wrapper, for the shape error. */
-function describeShape(value: unknown): string {
+/**
+ * Name what came back instead of the row wrapper, for the shape error. Its keys and message are
+ * server text: `scrub`bed of the base URL's credentials before they are cut and quoted.
+ */
+function describeShape(value: unknown, scrub: (text: string) => string): string {
   if (value === null) return "null";
   if (typeof value !== "object") return `a ${typeof value}`;
   const keys = Object.keys(value);
   if (keys.length === 0) return "an empty object";
   const shown = keys
     .slice(0, 5)
-    .map((k) => quoteServerText(k.length > 40 ? `${cutText(k, 40)}…` : k))
+    .map((key) => {
+      const k = scrub(key);
+      return quoteServerText(k.length > 40 ? `${cutText(k, 40)}…` : k);
+    })
     .join(", ");
   let text = `an object with the key${keys.length === 1 ? "" : "s"} ${shown}${keys.length > 5 ? ", …" : ""}`;
   // An error object delivered with status 200 (e.g. {"message": "ORA-00942: ..."}):
   // show its message, so the failure reads as one rather than as "no data".
   const record = value as Record<string, unknown>;
   for (const key of ["detail", "message", "error"]) {
-    const raw = record[key];
-    if (typeof raw === "string" && raw.trim() !== "") {
+    const found = record[key];
+    if (typeof found === "string" && found.trim() !== "") {
+      const raw = scrub(found);
       // Quoted visibly, every character escaped that a reader can't see (`quoteValue`).
       text += ` (${key}: ${quoteValue(raw.length > 200 ? `${cutText(raw, 200)}…` : raw)})`;
       break;
@@ -187,9 +194,16 @@ function describeShape(value: unknown): string {
  * never reads as data or as an empty result. (The client's list methods report an error
  * envelope as a `MudabApiError` with its messages before this runs.) The message starts with
  * `request`, the request the answer came from (`POST <url>`, userinfo redacted; the client
- * passes it), by default `POST <path>`.
+ * passes it), by default `POST <path>`. `scrub` removes credentials from the server text the
+ * message quotes (a key, a message, a field name) before it is cut; the client passes the engine's,
+ * which knows the base URL's userinfo.
  */
-export function extractRows<T>(res: unknown, path?: string, request = path === undefined ? "The answer" : `POST ${path}`): T[] {
+export function extractRows<T>(
+  res: unknown,
+  path?: string,
+  request = path === undefined ? "The answer" : `POST ${path}`,
+  scrub: (text: string) => string = (text) => text,
+): T[] {
   const key = path !== undefined && Object.hasOwn(WRAPPER_KEYS, path) ? WRAPPER_KEYS[path] : undefined;
   let rows: unknown;
   if (Array.isArray(res)) rows = res;
@@ -200,7 +214,7 @@ export function extractRows<T>(res: unknown, path?: string, request = path === u
   }
   const expected = `expected a JSON object wrapping one row array${key === undefined ? "" : ` under "${key}"`}`;
   if (!Array.isArray(rows)) {
-    throw new MudabParseError(`${request}: unexpected response shape: ${expected}, got ${describeShape(res)}.`);
+    throw new MudabParseError(`${request}: unexpected response shape: ${expected}, got ${describeShape(res, scrub)}.`);
   }
   for (let i = 0; i < rows.length; i++) {
     const row: unknown = rows[i];
@@ -216,7 +230,7 @@ export function extractRows<T>(res: unknown, path?: string, request = path === u
     for (const [field, value] of Object.entries(row)) {
       if (typeof value === "number" && !Number.isFinite(value)) {
         throw new MudabParseError(
-          `${request}: row ${i} field ${cutForMessage(quoteServerText(field))} is a ` +
+          `${request}: row ${i} field ${cutForMessage(quoteServerText(scrub(field)))} is a ` +
             "number beyond the range of a double (it reads as Infinity, and would print as null, " +
             '"no value").',
         );
@@ -373,7 +387,7 @@ export class MudabClient {
       });
     }
     const request = `POST ${this.engine.describeUrl(resource)}`;
-    const rows = extractRows<T>(res, resource, request);
+    const rows = extractRows<T>(res, resource, request, (text) => this.engine.scrub(text));
     // The range is the only selection the server makes. A reply with more rows than were
     // asked for means it ignored the range, so the rows are not the page asked for (for
     // `from` > 0 they start at row 0): an error, never a silently larger page.

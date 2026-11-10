@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { execFileSync } from "node:child_process";
-import { TextDecoder } from "node:util";
+import { TextDecoder, inspect } from "node:util";
 import assert from "node:assert/strict";
 import {
   RequestEngine,
@@ -1001,4 +1001,120 @@ test("scanNumbers quotes millions of declared members within a small heap", STAR
     `process.stdout.write(String(scanNumbers(json, new Set(["k"])).json.length));`;
   const out = execFileSync(process.execPath, ["--max-old-space-size=128", "--input-type=module", "-e", script], { encoding: "utf8" });
   assert.equal(out, String(n * 10 + 1));
+});
+
+// ---- class D: the base URL's credential, however a server spells it ----------------------------
+// A password with characters a JSON writer escapes (a quote) or may write as \u00XX (an umlaut),
+// one a URL's query percent-encodes but encodeURIComponent doesn't (an apostrophe), and an inner
+// space, so a scrub that worked word by word would leave a part of it.
+const ECHO_PW = "pä\"s's W0rd";
+const ECHO_BASE = `https://alice:${encodeURIComponent(ECHO_PW)}@mirror.example`;
+const ECHO_BASIC = Buffer.from(`alice:${ECHO_PW}`, "utf8").toString("base64");
+/** The forms an error must not carry, decoded and as a JSON string spells them, and each word of the password. */
+const ECHO_SECRETS = [ECHO_PW, `alice:${ECHO_PW}`, ECHO_BASIC, ...ECHO_PW.split(" ")].flatMap((secret) => [
+  secret,
+  JSON.stringify(secret).slice(1, -1),
+]);
+
+/** Everything a library user may log of an error: inspect, message, detail, location, the body and its decoded strings. */
+function everythingOf(err: unknown): string {
+  let text = inspect(err, { depth: 10, showHidden: true });
+  const e = err as { message?: unknown; detail?: unknown; location?: unknown; body?: unknown };
+  text += [e.message, e.detail, e.location, e.body].map(String).join("\n");
+  const walk = (v: unknown): void => {
+    if (typeof v === "string") text += `\n${v}`;
+    else if (v !== null && typeof v === "object") {
+      for (const [k, w] of Object.entries(v)) {
+        text += `\n${k}`;
+        walk(w);
+      }
+    }
+  };
+  try {
+    walk(typeof e.body === "string" ? JSON.parse(e.body) : undefined);
+  } catch {
+    // not JSON: the body as sent is all a caller reads
+  }
+  return text;
+}
+
+/** The error a stations() call against one answer raises, with the credential in the base URL. */
+async function echoFailure(answer: HttpResponse): Promise<unknown> {
+  const client = new MudabClient({ baseUrl: ECHO_BASE, transport: async () => answer, maxRetries: 0 });
+  return client.stations().then(
+    () => assert.fail("the call should have failed"),
+    (err: unknown) => err,
+  );
+}
+
+/** `text` as a JSON writer that escapes every non-ASCII character writes it. */
+const asciiJson = (text: string): string =>
+  JSON.stringify(text).replace(/[\u0080-\uffff]/g, (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`);
+/** `text` with every character written as a \uXXXX escape: no spelling of it as sent matches. */
+const escapedJson = (text: string): string => `"${[...text].map((ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`).join("")}"`;
+
+function assertNoSecret(err: unknown, label: string): void {
+  assert.ok(err instanceof Error, `${label}: ${String(err)}`);
+  const seen = everythingOf(err);
+  for (const secret of ECHO_SECRETS) assert.ok(!seen.includes(secret), `${label}: ${secret} in ${seen.slice(0, 3000)}`);
+}
+
+test("a credential echoed with JSON escapes is scrubbed from the message, the detail and the decoded body (class D)", async () => {
+  const echoes: Array<[string, string]> = [
+    ["the password, ASCII-only JSON", asciiJson(`wrong password ${ECHO_PW}`)],
+    ["the user:password, minimal JSON", JSON.stringify(`bad login alice:${ECHO_PW}`)],
+    ["the password, every character escaped", escapedJson(ECHO_PW)],
+    ["the request URL as the server decoded it", JSON.stringify(`no access to https://alice:${ECHO_PW}@mirror.example/x`)],
+    ["the request URL as sent", JSON.stringify(`no access to ${new URL(ECHO_BASE).href}x`)],
+  ];
+  for (const status of [401, 500]) {
+    for (const [label, json] of echoes) {
+      for (const key of ["detail", "message", "error"]) {
+        const err = await echoFailure(rawResponse(`{"${key}":${json}}`, "application/json", status));
+        assert.ok(err instanceof MudabApiError && err.status === status, `${label}: ${String(err)}`);
+        assertNoSecret(err, `${status} ${key} ${label}`);
+      }
+    }
+  }
+});
+
+test("a credential in an error list sent with 200, or in a 2xx answer the client quotes, is scrubbed (class D)", async () => {
+  for (const json of [asciiJson(ECHO_PW), JSON.stringify(`alice:${ECHO_PW}`), escapedJson(ECHO_PW)]) {
+    // The error list: its messages, and `.body`, the decoded answer written again (JSON.stringify
+    // spells a quote as \").
+    const listed = await echoFailure(rawResponse(`{"errors":[{"code":"E1","message":${json}}]}`, "application/json"));
+    assert.ok(listed instanceof MudabApiError, String(listed));
+    assertNoSecret(listed, `error list ${json}`);
+    // An object that is not the row wrapper: the shape error quotes its message and its keys.
+    for (const body of [`{"message":${json},"x":1}`, `{${json}:1,"y":2}`]) {
+      const shape = await echoFailure(rawResponse(body, "application/json"));
+      assert.ok(shape instanceof MudabParseError, String(shape));
+      assertNoSecret(shape, `shape ${body}`);
+    }
+  }
+  // A body that is not JSON: the parse error quotes its start and the parser's reason.
+  for (const text of [`denied ${ECHO_PW}`, `alice:${ECHO_PW} is wrong`]) {
+    const parse = await echoFailure(rawResponse(text, "text/plain"));
+    assert.ok(parse instanceof MudabParseError, String(parse));
+    assertNoSecret(parse, `parse ${text}`);
+  }
+  // A charset the client can't decode, named in its message.
+  const charset = await echoFailure(rawResponse("{}", `application/json; charset=x-${encodeURIComponent(ECHO_PW)}`));
+  assert.ok(charset instanceof MudabParseError, String(charset));
+  assert.ok(!charset.message.includes(encodeURIComponent(ECHO_PW)), charset.message);
+});
+
+test("a JSON error body keeps its spelling unless a credential hides behind an escape in it (class D)", async () => {
+  const plain = `{"message": "upstream \\u00e4 down", "n": 1}`;
+  const kept = await echoFailure(rawResponse(plain, "application/json", 500));
+  assert.ok(kept instanceof MudabApiError);
+  assert.equal(kept.body, plain);
+  const hidden = await echoFailure(rawResponse(`{"message": ${asciiJson(`wrong ${ECHO_PW}`)}, "n": 1}`, "application/json", 500));
+  assert.ok(hidden instanceof MudabApiError);
+  assert.equal(hidden.body, `{"message":"wrong ***","n":1}`);
+  // Too deeply nested to write again: left out.
+  const deep = `${"[".repeat(20_000)}${asciiJson(ECHO_PW)}${"]".repeat(20_000)}`;
+  const nested = await echoFailure(rawResponse(deep, "application/json", 500));
+  assert.ok(nested instanceof MudabApiError);
+  assert.ok(nested.body === "" || !nested.body.includes("\\u00e4"), nested.body.slice(0, 100));
 });

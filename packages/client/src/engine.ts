@@ -493,8 +493,10 @@ export class RequestEngine {
   readonly #credentials: string[];
   /**
    * The forms a server echoes that userinfo back in (the Basic value, the decoded
-   * `user:password`, the password alone), longest first, so a password never leaves half
-   * of the `user:password` around it.
+   * `user:password`, the password alone; `echoedCredentialForms`), each also percent-encoded as
+   * in a URL and escaped as in a JSON string (the client writes a decoded error list again with
+   * JSON.stringify, and a parse error quotes the body's start as a JSON string), longest first, so
+   * a password never leaves half of the `user:password` around it.
    */
   readonly #echoed: string[];
   private readonly transport: Transport;
@@ -532,16 +534,18 @@ export class RequestEngine {
       /\/+$/,
       "",
     );
-    this.#credentials = credentialsIn(this.#baseUrl).flatMap((raw) => {
+    // The userinfo as typed and as sent (WHATWG percent-encodes some of its characters, `"` as %22).
+    const userinfos = [...new Set([...credentialsIn(this.#baseUrl), ...credentialsIn(new URL(this.#baseUrl).href)])];
+    this.#credentials = userinfos.flatMap((raw) => {
       try {
         return [raw, decodeURIComponent(raw)];
       } catch {
         return [raw];
       }
     });
-    this.#echoed = credentialsIn(this.#baseUrl)
-      .flatMap(echoedCredentialForms)
-      .sort((a, b) => b.length - a.length);
+    this.#echoed = [...new Set(userinfos.flatMap(echoedCredentialForms).flatMap(urlSpellings).flatMap(jsonSpellings))].sort(
+      (a, b) => b.length - a.length,
+    );
     this.transport = functionOption("transport", options.transport, nodeHttpTransport);
     // Header values are checked up front: a blank one would be sent as is, a CR/LF
     // would reach a custom transport, and the default transport would fail late with
@@ -598,6 +602,32 @@ export class RequestEngine {
    */
   scrub(text: string): string {
     return this.#credentials.length === 0 ? text : redactSecrets(redactCredentials(text, this.#credentials), this.#echoed);
+  }
+
+  /**
+   * An error body, already scrubbed as sent, as `MudabApiError.body` keeps it: when it is JSON
+   * with an escape in it, checked decoded too. An escape (`\"`, `\u00e4`) hides an echoed
+   * credential from the scrub of the text as sent, while a caller who parses the body sees it. Such
+   * a body is kept as the decoded JSON written again (`JSON.stringify`, one spelling per character)
+   * with the credential scrubbed in that spelling. A body that doesn't parse is text nobody
+   * decodes, and stays as sent; one too deeply nested to write again is left out ("").
+   */
+  private scrubBody(scrubbed: string): string {
+    if (this.#echoed.length === 0 || !scrubbed.includes("\\")) return scrubbed;
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(scrubbed);
+    } catch {
+      return scrubbed;
+    }
+    let rewritten: string;
+    try {
+      rewritten = JSON.stringify(decoded);
+    } catch {
+      return "";
+    }
+    const spelled = this.#echoed.map((form) => JSON.stringify(form).slice(1, -1));
+    return spelled.some((form) => rewritten.includes(form)) ? redactSecrets(rewritten, spelled) : scrubbed;
   }
 
   /**
@@ -787,7 +817,7 @@ export class RequestEngine {
     const body = Buffer.from(JSON.stringify(payload ?? {}), "utf8");
     const res = await this.request("POST", path, { accept: "application/json", body });
     const request = `POST ${this.describeUrl(path)}`;
-    const decoded = decodeBody(res.data, res.contentType, request);
+    const decoded = decodeBody(res.data, res.contentType, request, (text) => this.scrub(text));
     const text = decoded.text;
     if (res.status === 204 || text.trim().length === 0) {
       // A broken answer, not "no rows": printed as nothing with exit 0, it would let a script
@@ -829,13 +859,15 @@ export class RequestEngine {
   private parseFailure(request: string, res: RawResponse, text: string, cause: unknown): string {
     // V8's reason quotes the body's first characters raw (`"<html>\r\n<h"... is not valid
     // JSON`): fold their line breaks, so the message stays one line.
-    const reason = serverTextForMessage(cause instanceof Error ? cause.message : String(cause), MAX_MESSAGE_VALUE_LENGTH);
-    const head = text.trimStart();
+    // Server text is scrubbed before it is cut or quoted: a cut could leave part of a credential,
+    // and a quote spells it differently (`\"`).
+    const reason = serverTextForMessage(this.scrub(cause instanceof Error ? cause.message : String(cause)), MAX_MESSAGE_VALUE_LENGTH);
+    const head = this.scrub(text.trimStart());
     const kind = head.startsWith("<")
       ? " It looks like an HTML page (a maintenance or error page from a proxy?), not JSON."
       : "";
     const start = head.length > 80 ? `${cutText(head, 80)}…` : head;
-    const contentType = res.contentType === "" ? "no content type" : `content type ${JSON.stringify(res.contentType)}`;
+    const contentType = res.contentType === "" ? "no content type" : `content type ${JSON.stringify(this.scrub(res.contentType))}`;
     return cutForMessage(
       sanitizeServerText(
         this.scrub(
@@ -870,10 +902,11 @@ export class RequestEngine {
       else if (typeof parsed?.message === "string") raw = parsed.message;
       else if (typeof parsed?.error === "string") raw = parsed.error;
       if (raw !== undefined) {
-        // The parsed string is attacker-controlled: strip control bytes so ANSI/OSC
-        // escapes can't reach the terminal, and cap length so a hostile body can't
-        // flood stderr.
-        detail = cleanDetail(raw);
+        // The parsed string is attacker-controlled and decoded: scrubbed again (a JSON escape
+        // hid the credential from the scrub of the body as sent), then stripped of control
+        // bytes so ANSI/OSC escapes can't reach the terminal, and capped so a hostile body
+        // can't flood stderr.
+        detail = cleanDetail(this.scrub(raw));
       }
     } catch {
       // Not JSON. Surface a short, whitespace-collapsed snippet of a textual
@@ -889,7 +922,7 @@ export class RequestEngine {
     // Redirects are not followed; name the target so the user can see where it points.
     const location =
       status >= 300 && status < 400 && locationHeader ? redirectTarget(url, locationHeader) : undefined;
-    return new MudabApiError({ status, url, method, body: text, detail, location, retryAfterMs });
+    return new MudabApiError({ status, url, method, body: this.scrubBody(text), detail, location, retryAfterMs });
   }
 }
 
@@ -902,19 +935,24 @@ const MAX_STRING_LENGTH = bufferConstants.MAX_STRING_LENGTH;
  * leading byte order mark, which Buffer#toString keeps and JSON.parse then rejects, so
  * a BOM added by a proxy cannot turn a valid answer into a parse error; a Latin-1 body
  * declared as such keeps its umlauts and `µ`. An unknown charset label is a
- * MudabParseError naming `request` (`POST <url>`). Bytes that are not valid in the charset
+ * MudabParseError naming `request` (`POST <url>`), the charset `scrub`bed of credentials. Bytes that are not valid in the charset
  * become U+FFFD, and `replaced` counts them: exactly for UTF-8 and the single-byte charsets; for
  * UTF-16 a U+FFFD the server sent counts too. A body above Node's longest string (about 512 MiB
  * of text) can't be decoded, whatever maxResponseBytes allows, from either decode: a
  * MudabParseError saying so, never a raw ERR_STRING_TOO_LONG ("Unexpected error" on the CLI).
  */
-function decodeBody(body: Buffer, contentType: string, request: string): { text: string; replaced: number } {
+function decodeBody(
+  body: Buffer,
+  contentType: string,
+  request: string,
+  scrub: (text: string) => string = (text) => text,
+): { text: string; replaced: number } {
   const charset = /;\s*charset\s*=\s*"?([^";\s]+)"?/i.exec(contentType)?.[1] ?? "utf-8";
   let decoder: TextDecoder;
   try {
     decoder = new TextDecoder(charset, { fatal: true });
   } catch {
-    throw new MudabParseError(`${request}: unsupported response charset "${cutText(sanitizeServerText(charset), 100)}".`);
+    throw new MudabParseError(`${request}: unsupported response charset "${cutText(sanitizeServerText(scrub(charset)), 100)}".`);
   }
   try {
     return { text: decoder.decode(body), replaced: 0 };
@@ -1014,6 +1052,28 @@ function wellFormedEscapes(json: string): { json: string; replaced: number } {
 
 function isLowSurrogate(code: number): boolean {
   return code >= 0xdc00 && code <= 0xdfff;
+}
+
+/**
+ * `form` and its spelling in a URL (`encodeURIComponent`): a server that puts a credential into
+ * a URL, a redirect's Location, percent-encodes it. A form that has no such spelling (a lone
+ * surrogate) is kept as it is.
+ */
+function urlSpellings(form: string): string[] {
+  try {
+    return [form, encodeURIComponent(form)];
+  } catch {
+    return [form];
+  }
+}
+
+/**
+ * `form` and its spelling inside a JSON string (`\"`, `\\`): the client writes an error list sent
+ * with 200 again with JSON.stringify (`MudabApiError.body`), and a parse error quotes the start of
+ * the body as a JSON string, so a credential with a quote in it is spelled with a backslash there.
+ */
+function jsonSpellings(form: string): string[] {
+  return [form, JSON.stringify(form).slice(1, -1)];
 }
 
 /**

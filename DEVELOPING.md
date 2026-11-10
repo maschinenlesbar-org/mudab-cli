@@ -351,11 +351,20 @@ to the CLI's own. Files:
   text-based cut for a value that doesn't parse as a URL.
 - **No credential in a logged client or error:** the engine keeps the base URL in a real
   `#private` field (so `console.log(client)`, `util.inspect` and `JSON.stringify` never
-  show it), and scrubs its userinfo (raw and percent-decoded) from error bodies, details
-  (a 200 error list's included, `reportedErrors(res, scrub)`),
+  show it), and scrubs its userinfo (raw and percent-decoded, as typed and as WHATWG sends it)
+  from error bodies, details (a 200 error list's included, `reportedErrors(res, scrub)`), the
+  server text a shape or parse error quotes (`extractRows(res, path, request, scrub)`: keys, a
+  message, a field name; the start of a body that is not JSON, its content type and charset),
   transport error text and the `cause` chain — and with it the forms a server echoes it
   back in (`echoedCredentialForms`, exported): the `Authorization: Basic` value, the decoded
-  `user:password`, and the password alone from 4 characters on (`redactSecrets`, exported).
+  `user:password`, and the password alone from 4 characters on (`redactSecrets`, exported), each
+  matched whole (a password with an inner space too), percent-encoded as in a URL and escaped as
+  in a JSON string. Server text is scrubbed *before* it is cut or quoted, and decoded text
+  (a JSON `detail`) again after decoding: a JSON escape (`\"`, `\u00e4`) hides an echo from the
+  scrub of the body as sent. `MudabApiError.body` stays as sent (scrubbed) unless it is JSON whose
+  decoded text still holds an echoed form behind an escape; then it is the decoded JSON written
+  again (`JSON.stringify`) with the form replaced, and `""` for such a body too deeply nested to
+  write again (`scrubBody`).
   The CLI replaces the Basic value and the pair on stdout and stderr, the bare password on
   stderr only (on stdout a short password may well occur in the data). Whatever a custom transport throws reaches
   the caller as a `MudabNetworkError` (the original, scrubbed, as `cause`).
