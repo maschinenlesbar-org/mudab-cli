@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { MudabClient, extractRows, normalizeRange, DEFAULT_PAGE_SIZE, MAX_RANGE_END } from "../src/client.js";
 import { MudabApiError, MudabNetworkError, MudabParseError, MudabValidationError } from "../src/errors.js";
 import { makeMockTransport, jsonResponse, jsonBodyOf, rawResponse } from "./helpers.js";
@@ -412,4 +413,17 @@ test("a shape, value or range error names the request: method and URL, userinfo 
       return true;
     });
   }
+});
+
+test("a row field name is cut before it is quoted, so a huge one costs no more than a short one", { timeout: 30_000 }, () => {
+  // extractRows quoted a whole field name (quoteServerText, one `+=` per character) before cutting
+  // it: a 4 MB name of a non-finite field aborted a 64 MB heap. (postJson refuses such a number
+  // first; a library caller of extractRows on its own data was not.) Starts a process with a
+  // small heap, so 30 s instead of the suite's 5 s.
+  const client = new URL("../src/client.js", import.meta.url).href;
+  const script =
+    `const { extractRows } = await import(${JSON.stringify(client)});` +
+    `try { extractRows([{ ["f".repeat(4_000_000)]: Infinity }]); } catch (err) { process.stdout.write(String(err.message.length)); }`;
+  const out = execFileSync(process.execPath, ["--max-old-space-size=64", "--input-type=module", "-e", script], { encoding: "utf8" });
+  assert.ok(Number(out) > 0 && Number(out) < 1000, out);
 });

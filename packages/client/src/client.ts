@@ -16,7 +16,15 @@
 //   const cw = (await c.parameters({ all: true })).filter((p) => p.COMPT_DS === "CW"); // whole table
 
 import { RequestEngine, quoteServerText, serverTextForMessage, type EngineOptions } from "./engine.js";
-import { MudabApiError, MudabParseError, MudabValidationError, cutForMessage, cutText, quoteValue } from "./errors.js";
+import {
+  MAX_MESSAGE_VALUE_LENGTH,
+  MudabApiError,
+  MudabParseError,
+  MudabValidationError,
+  cutForMessage,
+  cutText,
+  quoteValue,
+} from "./errors.js";
 import { assertValid, normalizeToken, tokenProblem } from "./validate.js";
 import type {
   Compartment,
@@ -226,11 +234,15 @@ export function extractRows<T>(
     }
     // JSON.parse reads a number beyond the double range (1e309) as Infinity, which
     // JSON.stringify then prints as null: "no value" in the docs, so such a row would be
-    // dropped as empty. Rows are flat, so their own fields are checked.
+    // dropped as empty. Rows are flat, so their own fields are checked. The field name is server
+    // text: scrubbed, then cut before it is quoted (quoteServerText works per character).
     for (const [field, value] of Object.entries(row)) {
       if (typeof value === "number" && !Number.isFinite(value)) {
+        const name = scrub(field);
+        // The "…" of a cut goes after the closing quote, as `quoteValue` puts it.
+        const shown = name.length > MAX_MESSAGE_VALUE_LENGTH ? `${quoteServerText(cutText(name, MAX_MESSAGE_VALUE_LENGTH))}…` : quoteServerText(name);
         throw new MudabParseError(
-          `${request}: row ${i} field ${cutForMessage(quoteServerText(scrub(field)))} is a ` +
+          `${request}: row ${i} field ${shown} is a ` +
             "number beyond the range of a double (it reads as Infinity, and would print as null, " +
             '"no value").',
         );
