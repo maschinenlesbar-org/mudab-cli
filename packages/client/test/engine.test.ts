@@ -20,6 +20,7 @@ import {
   MudabParseError,
   MudabValidationError,
   TextBuilder,
+  credentialsIn,
   cutText,
   echoedCredentialForms,
   redactUrl,
@@ -1168,4 +1169,69 @@ test("a token in the base URL (a userinfo without a password) is scrubbed from l
       for (const secret of [token, basic]) assert.ok(!seen.includes(secret), `${base} ${echo}: ${seen.slice(0, 1000)}`);
     }
   }
+});
+
+test("a base URL whose scheme is not followed by // and the host, or with a backslash, is rejected at construction, never echoing the password (class F, F4)", () => {
+  for (const [baseUrl, reason] of [
+    ["http:alice:s3cret@h.example", 'Expected an absolute http(s) URL ("https://" and the host).'],
+    ["https:/alice:s3cret@h.example", 'Expected an absolute http(s) URL ("https://" and the host).'],
+    ["http:///alice:s3cret@h.example", 'Expected an absolute http(s) URL ("https://" and the host).'],
+    ["HTTPS:h.example/v1", 'Expected an absolute http(s) URL ("https://" and the host).'],
+    ["https:\\\\alice:s3cret@h.example", 'A base URL cannot contain a backslash (\\); write "/" instead.'],
+    ["https://alice:s3cret@a.example\\@b.example", 'A base URL cannot contain a backslash (\\); write "/" instead.'],
+  ] as const) {
+    const mt = makeMockTransport(() => jsonResponse({}));
+    assert.throws(
+      () => new RequestEngine({ transport: mt.transport, baseUrl }),
+      (err: unknown) => err instanceof MudabValidationError && err.message === `Invalid baseUrl: ${reason}` && !err.message.includes("s3cret"),
+      baseUrl,
+    );
+    assert.equal(mt.calls.length, 0, baseUrl);
+  }
+  for (const baseUrl of ["HTTPS://h.example/v1", "http://alice:pw@h.example:8080"]) {
+    assert.doesNotThrow(() => new RequestEngine({ transport: makeMockTransport(() => jsonResponse({})).transport, baseUrl }), baseUrl);
+  }
+});
+
+test("requests go to the base URL as WHATWG parses it, the reading every check makes (class F)", async () => {
+  for (const [baseUrl, url] of [
+    ["https://API.Example:443/v1", "https://api.example/v1/STATION_SMALL"],
+    ["http://h.example:80/a b/", "http://h.example/a%20b/STATION_SMALL"],
+    ["https://u:p@h.example/x@y//", "https://u:p@h.example/x@y/STATION_SMALL"],
+  ] as const) {
+    const mt = makeMockTransport(() => jsonResponse(fx.stations));
+    await new MudabClient({ baseUrl, transport: mt.transport }).stations();
+    assert.equal(mt.last().url, url, baseUrl);
+  }
+});
+
+test("credentialsIn ends the authority of a special scheme at a backslash, as WHATWG does (class F)", () => {
+  for (const scheme of ["http", "https", "HTTPS", "ws", "wss", "ftp"]) {
+    assert.deepEqual(credentialsIn(`${scheme}://u:p@a.example\\@b.example/x`), ["u:p"], scheme);
+    assert.equal(new URL(`${scheme}://u:p@a.example\\@b.example/x`).password, "p", scheme);
+  }
+  // Another scheme's authority runs on to "/", "?" or "#".
+  assert.deepEqual(credentialsIn("foo://u:p@a.example\\@b.example/x"), ["u:p@a.example\\"]);
+  assert.deepEqual(credentialsIn("https://u:p@a.example/x\\@y"), ["u:p"]);
+});
+
+test("credentialsIn skips the slashes and backslashes WHATWG skips after a special scheme (F3)", () => {
+  // `http:///u:pw@h`, `https:\\u:pw@h` and `http:u:pw@h` all carry `u:pw` for WHATWG; read
+  // after "://", the userinfo was missed, so a refused --base-url echoed the password in clear.
+  for (const value of [
+    "http:alice:pw@h.example",
+    "http:/alice:pw@h.example",
+    "http:///alice:pw@h.example/x",
+    "https:////alice:pw@h.example",
+    "HTTPS:\\\\alice:pw@h.example",
+    "wss:\\/alice:pw@h.example",
+    "ftp:alice:pw@h.example",
+  ]) {
+    assert.deepEqual(credentialsIn(value), ["alice:pw"], value);
+    assert.equal(new URL(value).password, "pw", value);
+  }
+  // Another scheme needs "//" before an authority: `foo:u:p@h` and `foo:///u:p@h` carry none.
+  assert.deepEqual(credentialsIn("foo:u:p@h.example"), []);
+  assert.deepEqual(credentialsIn("foo:///u:p@h.example"), []);
+  assert.equal(new URL("foo:///u:p@h.example").password, "");
 });

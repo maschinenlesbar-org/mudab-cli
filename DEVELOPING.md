@@ -325,10 +325,17 @@ to the CLI's own. Files:
 - `--base-url` is trusted input but only `http:`/`https:` is accepted. One rule,
   `baseUrlProblem` (`validate.ts`, exported), covers it: a `file:`, `ftp:` or malformed
   value, a query or fragment (paths are appended as a string, so they would swallow
-  every resource path), surrounding whitespace or a control character anywhere
-  (`new URL()` drops them silently, but the raw string is what the engine joins), and
-  a `%` in the user name or password that doesn't start an escape (write a literal `%`
-  as `%25`; Node would fail to decode it for the Authorization header at request time). The
+  every resource path), a backslash (WHATWG ends an http(s) host at one, text-based code
+  reads on: `https://u:pw@a.example\@b.example`), surrounding whitespace or a control
+  character anywhere (`new URL()` drops them silently), a `%` in the user name or password
+  that doesn't start an escape (write a literal `%` as `%25`; Node would fail to decode it for
+  the Authorization header at request time), and a scheme not followed by exactly `//` and
+  the host (`http:host`, `http:/host`, `http:///host`, which WHATWG repairs silently:
+  `Expected an absolute http(s) URL ("https://" and the host).`). The engine requests the base
+  URL as WHATWG parses it (`new URL(baseUrl).href`: host lower-cased, a default port dropped,
+  the path percent-encoded where WHATWG does it), the reading every check makes, and
+  `credentialsIn` reads a userinfo where WHATWG does: after any slashes and backslashes a
+  special scheme skips (`http:///u:pw@h`), up to a backslash too. The
   CLI's `parseBaseUrl` calls it at parse time (usage error); the engine constructor
   checks the raw `baseUrl` before stripping trailing slashes and throws
   `MudabValidationError` (`Invalid baseUrl: <reason>`), so a custom transport never

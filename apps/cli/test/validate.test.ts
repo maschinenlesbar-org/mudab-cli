@@ -82,7 +82,7 @@ test("parity() runs one input through run() and the library on recording transpo
 });
 
 test("baseUrlProblem accepts http(s) URLs with a path, userinfo or trailing slash", () => {
-  for (const ok of ["https://h.example", "http://h.example/x/", "https://u:p@h.example/mudab"]) {
+  for (const ok of ["https://h.example", "http://h.example/x/", "https://u:p@h.example/mudab", "HTTPS://H.example/v1"]) {
     assert.equal(baseUrlProblem(ok), undefined, ok);
   }
 });
@@ -99,6 +99,15 @@ test("baseUrlProblem names what is wrong, without repeating the value", () => {
     ["https://h.example/x\n", "A base URL cannot have surrounding whitespace."],
     ["https://h.example/a\tb", "A base URL cannot contain control characters."],
     ["https://h.example/a\u007fb", "A base URL cannot contain control characters."],
+    // WHATWG ends an http(s) host at a backslash, text-based code reads on (class F).
+    ["https://u:pw@a.example\\@b.example", 'A base URL cannot contain a backslash (\\); write "/" instead.'],
+    ["https://h.example/a\\b", 'A base URL cannot contain a backslash (\\); write "/" instead.'],
+    ["https:\\\\h.example", 'A base URL cannot contain a backslash (\\); write "/" instead.'],
+    // WHATWG repairs a scheme not followed by exactly // and the host silently (F4).
+    ["http:h.example", 'Expected an absolute http(s) URL ("https://" and the host).'],
+    ["https:/h.example", 'Expected an absolute http(s) URL ("https://" and the host).'],
+    ["http:///h.example", 'Expected an absolute http(s) URL ("https://" and the host).'],
+    ["http:u:s3cret@h.example", 'Expected an absolute http(s) URL ("https://" and the host).'],
   ] as const) {
     assert.equal(baseUrlProblem(bad), reason, JSON.stringify(bad));
   }

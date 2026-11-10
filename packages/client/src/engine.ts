@@ -526,16 +526,18 @@ export class RequestEngine {
     // consumer that injects a custom transport would otherwise get no gating at all,
     // and could be steered to a non-http(s) scheme. The raw value is checked, before
     // the trailing slashes are stripped: surrounding whitespace or a control
-    // character, which new URL() drops silently, would end up in every request URL
-    // (`/x%20/STATION_SMALL`). A bad base URL is a configuration error, so
+    // character, which new URL() drops silently, would make the URL requested another
+    // one than the URL typed. A bad base URL is a configuration error, so
     // MudabValidationError (`Invalid baseUrl: <reason>`), not MudabNetworkError,
     // which a caller may treat as "retry later".
-    this.#baseUrl = assertValid("baseUrl", options.baseUrl ?? DEFAULT_BASE_URL, baseUrlProblem).replace(
-      /\/+$/,
-      "",
-    );
+    const baseUrl = assertValid("baseUrl", options.baseUrl ?? DEFAULT_BASE_URL, baseUrlProblem);
+    // Requests go to the base URL as WHATWG parses it, the reading every check of it makes (the
+    // host, the cleartext warning, the Authorization header Node derives), not to a text-based
+    // reading of the string: a transport that reads the URL as text reaches the same host.
+    const href = new URL(baseUrl).href;
+    this.#baseUrl = href.replace(/\/+$/, "");
     // The userinfo as typed and as sent (WHATWG percent-encodes some of its characters, `"` as %22).
-    const userinfos = [...new Set([...credentialsIn(this.#baseUrl), ...credentialsIn(new URL(this.#baseUrl).href)])];
+    const userinfos = [...new Set([...credentialsIn(baseUrl), ...credentialsIn(href)])];
     this.#credentials = userinfos.flatMap((raw) => {
       try {
         return [raw, decodeURIComponent(raw)];

@@ -135,9 +135,18 @@ export const headerNameProblem: Problem<string> = (name) =>
  *   `ftp:` base URL would otherwise reach a custom transport that does no such check);
  * - no `?` or `#`: either would swallow every path (`http://h/?x=1` posts to
  *   `/?x=1/STATION_SMALL`, `http://h/#f` to `/`);
+ * - no backslash: WHATWG ends an http(s) host at one, as at a `/`, while text-based code reads
+ *   on, so `https://u:pw@a.example\@b.example` was checked as a.example and its credentials
+ *   could go to b.example;
  * - no surrounding whitespace and no control character anywhere: `new URL()` trims or
- *   drops them silently, but the raw string is what gets sent, so `"https://h/x "`
- *   would post to `/x%20/STATION_SMALL`.
+ *   drops them silently, so the URL requested would not be the one typed (`"https://h/x "`
+ *   read as `https://h/x`, a tab inside a host dropped);
+ * - the scheme followed by exactly `//` and the host (not `http:host`, `http:/host` or
+ *   `http:///host`): WHATWG skips any slashes after an http(s) scheme and repairs the URL
+ *   silently, so the host requested would not be the one typed either.
+ *
+ * The engine requests the base URL as WHATWG parses it (host lower-cased, a default port
+ * dropped, the path percent-encoded where WHATWG does it), the reading every check makes.
  *
  * Userinfo (`user:pw@`) is allowed: it is sent as Basic auth and redacted in every
  * error message. A `%` in it must start a valid escape (`%25` for a literal one), as
@@ -157,6 +166,9 @@ export const baseUrlProblem: Problem<string> = (value) => {
     return `Unsupported scheme "${cutForMessage(url.protocol)}". Expected an http(s) URL.`;
   }
   if (/[?#]/.test(value)) return "A base URL cannot have a query (?) or fragment (#).";
+  // WHATWG reads a "\" in an http(s) URL as "/", so it ends the host: in
+  // `https://u:pw@a.example\@b.example` every reader of the base URL has to agree where.
+  if (value.includes("\\")) return 'A base URL cannot contain a backslash (\\); write "/" instead.';
   if (value !== value.trim()) return "A base URL cannot have surrounding whitespace.";
   for (let i = 0; i < value.length; i++) {
     const c = value.charCodeAt(i);
@@ -171,5 +183,8 @@ export const baseUrlProblem: Problem<string> = (value) => {
       return 'The user name or password has a "%" that is not followed by two hex digits; write a literal "%" as %25.';
     }
   }
+  // WHATWG skips any slashes after "http:" and repairs `http:host`, `http:/host` and
+  // `http:///host` into `http://host` silently: the host requested would not be the one typed.
+  if (!/^https?:\/\/[^/]/i.test(value)) return 'Expected an absolute http(s) URL ("https://" and the host).';
   return undefined;
 };

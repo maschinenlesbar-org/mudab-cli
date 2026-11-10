@@ -633,3 +633,23 @@ test("a token in --base-url (a userinfo without a password) is redacted from wha
     assert.ok(!err.includes(token) && !err.includes(basic), err);
   }
 });
+
+test("a refused --base-url with a backslash or without exactly // is a usage error that never echoes the password (class F, F3, F4)", async () => {
+  // WHATWG skips any slashes and backslashes after "http:", so `https:\\alice:pw@h` carries
+  // `alice:pw`; commander echoed the value in clear, as credentialsIn only looked after "://".
+  const pw = "pw1-s3cret";
+  for (const base of [
+    `https:\\\\alice:${pw}@127.0.0.1:9`,
+    `http:///alice:${pw}@h.example/?q=1`,
+    `http:alice:${pw}@127.0.0.1:9`,
+    `http:/alice:${pw}@127.0.0.1:9`,
+    `https://alice:${pw}@a.example\\@b.example`,
+  ]) {
+    const cli = makeCli(() => jsonResponse(fx.stations));
+    assert.equal(await run(["--base-url", base, "stations"], cli.deps), 2, base);
+    assert.equal(cli.mt.calls.length, 0, base);
+    const all = cli.err.join("\n") + cli.out.join("\n");
+    assert.ok(!all.includes(pw), `${base}: ${all}`);
+    assert.match(all, /invalid/, base);
+  }
+});
