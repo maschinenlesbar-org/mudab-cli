@@ -31,6 +31,55 @@ npm install @maschinenlesbar.org/mudab-cli
 
 Requires **Node.js 22.12+**.
 
+### Docker
+
+From 0.9.0 every release is also a container image for linux/amd64 and linux/arm64 on the
+GitHub Container Registry, made from the same tarball as the npm package. It needs no Node.js and no
+install:
+
+```bash
+docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
+  ghcr.io/maschinenlesbar-org/mudab-cli:latest plc-stations --all
+```
+
+The image's entrypoint is the program, so the command follows the image name directly;
+`… mudab-cli:latest mudab plc-stations --all` works too.
+
+In a container with a memory limit (`--memory`) the default `--max-response-bytes` is an eighth
+of that limit (at most the usual 100 MiB), so an oversized answer is refused with a clear
+error instead of the container being killed for memory. `measurements --all` is about 42 MB:
+give it `--memory 512m` or more, or page with `--from`/`--count`. The CLI needs at least 12
+processes and threads (`--pids-limit 12`): below that it refuses with an error, and with 4 or
+fewer Node.js itself hangs before the CLI can check.
+
+`latest` is the newest release. For scripts, name a release and pin its digest, which the
+[release notes](https://github.com/maschinenlesbar-org/mudab-cli/releases) give:
+`…/mudab-cli:0.9.0@sha256:<digest>`. Each image carries signed build provenance; check it with
+
+```bash
+gh attestation verify oci://ghcr.io/maschinenlesbar-org/mudab-cli:latest \
+  --repo maschinenlesbar-org/mudab-cli
+```
+
+### MCP server
+
+From 0.9.0 MUDAB is also an [MCP](https://modelcontextprotocol.io/) server for AI agents,
+`@maschinenlesbar.org/mudab-mcp` (command `mudab-mcp`, image
+`ghcr.io/maschinenlesbar-org/mudab-mcp`): five read-only tools, finding stations (with the
+region and institute of their project station), finding parameters (with every compartment that
+measures them), station measurements, the HELCOM river loads into the Baltic, and the raw rows of
+any table, with MUDAB's traps handled (the server filters nothing, stations counted by name,
+conflicting regions kept, units kept apart, river loads only unless asked), on stdio or
+Streamable HTTP. Setup for Claude Code, Claude Desktop and VS Code:
+[MCP.md](https://github.com/maschinenlesbar-org/mudab-cli/blob/main/MCP.md). The data has no
+open licence: running the server as a service for others may need the provider's permission
+(see [DATA_LICENSE.md](DATA_LICENSE.md)).
+
+```bash
+npm i -g @maschinenlesbar.org/mudab-mcp
+claude mcp add mudab -- mudab-mcp
+```
+
 ## CLI
 
 Every command lists one dataset. Results are paged with `--from`/`--count`
@@ -104,6 +153,19 @@ single-key wrapper object). Only `range` is honoured by the server — see the n
 > page, or `{ all: true }` for the whole table (`measurements` ≈ 187,000 rows / 42 MB).
 > Since 0.1.0 — before, a call without a range returned the whole table.
 
+The skills' use cases are library functions too, with MUDAB's traps built in (whole tables read
+in pages and selected here, stations counted by name, a substance's compartments from each
+compartment's list, units kept apart, river loads only unless asked):
+
+```ts
+import { findParameters, findStations, getMeasurements, getRiverLoads } from "@maschinenlesbar.org/mudab-cli";
+
+await findStations(mudab, { kind: "project", institute: "BSH", region: "Nordsee" });
+await findParameters(mudab, { name: "mercury" }); // HG in water, sediment and biota
+await getMeasurements(mudab, { station: "OMMVZBA15", parameter: "SurTemp" }); // series per unit, newest first
+await getRiverLoads(mudab, { parameter: "Ntot", year: 2024, limit: 5 }); // monitored rivers, largest first
+```
+
 ## Documentation
 
 - [Usage.md](https://github.com/maschinenlesbar-org/mudab-cli/blob/main/Usage.md) — full command reference and exit codes
@@ -111,6 +173,7 @@ single-key wrapper object). Only `range` is honoured by the server — see the n
 - [GLOSSARY.md](https://github.com/maschinenlesbar-org/mudab-cli/blob/main/GLOSSARY.md) — MUDAB domain terms (stations, compartments, PLC)
 - [DATA_LICENSE.md](DATA_LICENSE.md) — upstream data terms (distinct from the code license)
 - [SKILLS.md](https://github.com/maschinenlesbar-org/mudab-cli/blob/main/SKILLS.md) — the Claude Code skills this repo ships
+- [MCP.md](https://github.com/maschinenlesbar-org/mudab-cli/blob/main/MCP.md) — the MCP server: tools, setup, options
 
 ## Licence
 

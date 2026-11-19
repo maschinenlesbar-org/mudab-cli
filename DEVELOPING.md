@@ -20,13 +20,15 @@ npm run typecheck   # tsc -b over every workspace, as build
 npm test            # pretest builds, then `node --test` over each workspace's dist/test
 npm run coverage    # the same tests in one run, with a coverage report
 npm start -- --help # run the CLI from the build (node apps/cli/dist/src/cli/index.js)
-npm run bump -- <patch|minor|major>  # bump apps/cli, commit, tag vX.Y.Z
+npm run bump -- <patch|minor|major>  # bump every published app (apps/cli, apps/mcp), commit, tag vX.Y.Z
 node --test apps/cli/dist/test/cli.test.js   # one file, after a build
 ```
 
-CI (`ci.yml`) type-checks, builds and tests on Node 22/24/26, then packs the real tarball,
-checks the pack left nothing behind, installs it globally with the registry out of reach and
-runs the bin. `release.yml` (on a `v*` tag, made by `npm run bump`) has three jobs. **pack**
+CI (`ci.yml`) type-checks, builds and tests on Node 22/24/26, then packs each published app
+(the CLI and the MCP server), checks the pack left nothing behind, installs it globally with the
+registry out of reach and runs its bins; its `interop` job runs the MCP server against the
+official MCP client. `images.yml` builds, smoke-tests and scans both container images on every
+push and weekly (see [Container image](#container-image)). `release.yml` (on a `v*` tag, made by `npm run bump`) has three jobs. **pack**
 (read-only): verify the tag against `apps/cli/package.json`, test, `npm pack --workspace
 apps/cli`, record the tarball's and the notes' sha256 as job outputs. **sbom** (read-only):
 `npm ci --ignore-scripts`, then the CycloneDX tool from the isolated, lockfile-pinned
@@ -37,7 +39,11 @@ the GitHub Release with `gh`. So no third-party code runs where the tarball is b
 the write token is. Update the tool by changing its version in `tools/sbom/package.json` and
 running `npm install --package-lock-only --ignore-scripts` there; don't chain its install into
 an npm script. Conformance test P31 (`apps/cli/test/conformance-p31-release-pipeline.test.ts`)
-reads the workflow and the lockfile and checks it. `publish.yml` runs `npm publish --workspace apps/cli`.
+reads the workflow and the lockfile and checks it. The release also carries both image archives,
+their SBOMs, `SHA256SUMS` and signed provenance. `publish.yml` (manual dispatch from the tag)
+publishes the release's own files: both tarballs to npm via OIDC Trusted Publishing with
+provenance, and both images to ghcr.io, each checked first against the immutable release and the
+provenance `release.yml` signed.
 
 ## Layout
 
@@ -53,14 +59,18 @@ apps/cli/            # @maschinenlesbar.org/mudab-cli — the published package
   test/              # CLI tests and every conformance-*.test.ts
 packages/client/     # @maschinenlesbar.org/mudab-client — private, shipped inside the CLI's tarball
   src/               # the API client (below)
-  test/              # tests that only touch the client, + the transport helpers and fixtures
+  test/              # tests that only touch the client, + the transport helpers and fixtures (a mock of the API)
+apps/mcp/            # @maschinenlesbar.org/mudab-mcp — the MCP server, released with the CLI
+packages/log/        # the log records (text/jsonl), shared by both apps
+tools/image/         # the container images of both apps (build, push, smoke, SBOM)
+tools/interop/       # the built MCP server against the official MCP client (own lockfile)
 tools/pack/          # prepack/postpack: ship the client (dist/node_modules) and commander in the tarball
-tools/bump.mjs       # version bump + commit + tag (npm run bump)
+tools/bump.mjs       # version bump + commit + tag of every published app (npm run bump)
 tools/sbom/          # the CycloneDX SBOM tool, own lockfile (release.yml's sbom job only)
 tsconfig.docs.json   # TypeDoc only: the package entry, with the client read from its sources
 ```
 
-- **The client is its own package** so a later MCP app can share it with the CLI. It is
+- **The client is its own package** so the MCP app shares it with the CLI. It is
   never published on its own: `apps/cli`'s `prepack` copies it into
   `apps/cli/dist/node_modules/`, where the CLI's imports find it, and the tarball ships it
   as plain files — so npm lists only commander (bundled) as a dependency, never the
@@ -74,9 +84,10 @@ tsconfig.docs.json   # TypeDoc only: the package entry, with the client read fro
   CLI's tests (not bundled). Only `"."` is part of the library.
 - **Dependencies point one way:** the app depends on the client, the client on nothing
   in the workspace.
-- **The version lives in `apps/cli/package.json`.** The root has none; a plain
-  `npm version` at the root is refused. Release with `npm run bump -- <patch|minor|major>`,
-  which bumps the app, commits (the bare version as the message) and tags `vX.Y.Z`.
+- **The version lives in `apps/cli/package.json`** (and, the same, in `apps/mcp/package.json`).
+  The root has none; a plain `npm version` at the root is refused. Release with
+  `npm run bump -- <patch|minor|major>`, which bumps every published app together, commits (the
+  bare version as the message) and tags `vX.Y.Z`.
 - **TypeScript:** `tsconfig.base.json` holds the compiler options; every workspace has a
   `tsconfig.json` (`src/`) and a `tsconfig.test.json` (`test/`), and the root
   `tsconfig.json`/`tsconfig.test.json` reference them, built with `tsc -b`.
@@ -91,6 +102,7 @@ packages/client/src/
     errors.ts    # MudabError / MudabApiError / MudabNetworkError / MudabValidationError / MudabParseError
     validate.ts  # the Problem type + assertValid(): input rules shared by library and CLI
     client.ts    # MudabClient — one method per endpoint, defensive row extraction
+    operations.ts # the skills' use cases: findStations / findParameters / getMeasurements / getRiverLoads / listRows
     index.ts     # the client's public surface (the library entry re-exports it)
 apps/cli/src/cli/
     io.ts        # injectable I/O (CliDeps / CliIO), the logger and the clock — no env seam (no auth)
@@ -135,8 +147,9 @@ the CLI adds a hint pointing at the canonical base URL.
 ## Testing
 
 `node --test` on each workspace's compiled `dist/test/` — no jest/vitest. The client's
-tests are in `packages/client/test/` (`http`, `engine`, `client`), with the transport
-helpers and the fixtures (`helpers.ts`, `fixtures.ts`); everything that drives the CLI is
+tests are in `packages/client/test/` (`http`, `engine`, `client`, `operations`), with the transport
+helpers and the fixtures (`helpers.ts`, `fixtures.ts`, and the mock API `tables.ts`, see
+[MCP server](#mcp-server-appsmcp)); everything that drives the CLI is
 in `apps/cli/test/`, and `apps/cli/test/helpers.ts` re-exports the client's helpers next
 to the CLI's own. Files:
 
@@ -412,6 +425,113 @@ colon left out, whose userinfo is everything between the first slashes and the l
   path aborts the process on a ~250 MB string, but only it prints very deep nesting there.
 - **Scaffold origin:** this repo was scaffolded from `entgeltatlas-cli`; the API-key /
   X-API-Key machinery was stripped because MUDAB needs no auth.
+
+## MCP server (apps/mcp)
+
+`apps/mcp` is the second published app, `@maschinenlesbar.org/mudab-mcp` (bin `mudab-mcp`),
+released in lockstep with the CLI: `npm run bump` bumps every published app under `apps/`
+together, one version, one tag. Its npm README is the root `MCP.md` (prepack packs `<APP>.md`
+for an app that has one).
+
+| Module | Role |
+|---|---|
+| `packages/client/src/operations.ts` | The skills' use cases as library functions, with their traps built in. The server filters nothing, so each reads its table with `readPages` (one ranged POST after the other, `PAGE_ROWS` rows each so a page stays under ~7 MB: measurements 30,000, stations 60,000, the PLC values 25,000, the small tables one page; up to `maxPages`, else said to be incomplete) and selects here. `findStations` (mudab-stations): measurement stations once per name (the table repeats rows and lists a station per compartment; `total` counts names, `rows` table rows), with their compartments and types and the regions and institutes of their project station (joined on `NAME_PS`; a name with several, such as L1 (BSH/Nordsee and IOW/Ostsee), keeps all, said in notes); project stations by name, region, institute; HELCOM PLC stations once per code (the table repeats them, some under XX as well as their Land), by station, river or code, Land, monitoring type, with coordinates missing and the two pseudo-stations said. `findParameters` (mudab-parameters): reads every compartment's own list and the combined table, so a parameter names every compartment that measures it (the combined table puts mercury under biota only); English names (an empty answer says so), null groups, `*deprecated*` last; `plc` gives the PLC parameters with stations, values and last year. `getMeasurements` (mudab-measurements): the station measurement table (weather and sea observations only, 14 codes, `MEASUREMENT_PARAMETERS` with German and English words) in columns, exact copies dropped (the table repeats most rows: 187,707 rows, 36,919 distinct in a whole read and 40,239 in a paged read on 2026-11-19, the paged read holding every row of the whole one; the upstream view isn't stable between reads), cached per client for `MEASUREMENTS_CACHE_MS` (15 minutes; it is ~42 MB upstream, ~190,000 rows, about 15 s in 7 pages); a series is a station, a parameter and a unit (`unitOf`: the method id's token before the institute; WAVHT is in m and on a scale, many AIRTEMP and AIRPRES rows state none); a station name exact or unique, else `ambiguous` (OMMVZBA15 and OMMVZBA15_CW are different stations). `getRiverLoads` (mudab-measurements): the PLC values, river loads (`MON_RIVER_LOAD`) unless `kind` says otherwise (FLOW: the flow gauges), parameters by code, name or German word (`PLC_PARAMETERS`), nulls dropped and counted, rows ranked or totalled per station, year, kind or Land, per unit (the 2014 river loads and some unmonitored years say kg/a at the size of t/a values: never added across), a last year with under 75 % of the year before's rows said to be incomplete, rows without a Land (XX) left out of a Land filter and counted. `listRows`: the generic tool's raw rows, a page or a field's exact value across the whole table. Public API of both packages. |
+| `packages/log` | The log records (text/jsonl), shared by both apps; `createLogger({ program })`. |
+| `src/mcp/tools.ts` | This repo's: the five tools (flat input schemas with limits, no root combinators; one object output schema each; descriptions under 2000 characters), the instructions, the licence (no open licence: the provider's terms, the citation DATA_LICENSE.md asks for, where to ask), the hints the server's messages give. |
+| `src/mcp/api.ts` | This repo's: how the kit reaches the client (`MudabClient` as `Client`, `MudabError` as `ClientError`, `MudabNetworkError` as `NetworkError`, `apiBase`). `apiBase` is the base URL (default `https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements`), so a result's `source` is the endpoint POSTed to (`…/STATION_SMALL`, `…/V_MESSWERTE_PLC`). |
+| `src/mcp/server.ts` | The McpServer factory, the tool types, `callTool`: deadline (`--call-timeout`) plus the client's cancellation, cleaned and fitted answers, failures as `isError` results. |
+| `src/mcp/result.ts` | `cleanStrings` (control, bidi, zero-width characters dropped in the value), `fitResult` (whole list entries dropped under `--max-result-chars`, `nextOffset`). |
+| `src/mcp/limiter.ts` | One per process around the upstream transport: 2 in flight, 120 a minute, pause on 429, a bounded queue. The method doesn't matter to it: MUDAB's requests are POSTs. |
+| `src/mcp/http.ts` | node:http adapter for the SDK's `createMcpHandler`: POST /mcp, /healthz, Host and Origin checks (the SDK does neither), 1 MiB body, 8 requests at once, timeouts. |
+| `src/mcp/config.ts`, `run.ts`, `index.ts` | Options (`node:util` parseArgs), argv -> exit code, the bin (console into log records, SIGINT/SIGTERM, stdin's end). |
+
+The protocol is the SDK's: `@modelcontextprotocol/server` 2.4.0, bundled with its core and zod
+(prepack). It serves the 2026-07-28 revision and the 2025 handshake (2025-11-25, 2025-06-18)
+statelessly, on stdio (`serveStdio`) and HTTP. The SDK bundles AJV 8.18 into its own code to
+validate tool arguments against the input schemas; an SBOM doesn't list that copy.
+
+Accepted SDK behaviour on stdio: a client that sends `notifications/initialized` and a request
+before the answer to its `initialize` (the MCP lifecycle says it must wait) gets its answers
+late, at the next event on the connection, because `serveStdio` decides the protocol era from
+the opening exchange. Real clients wait, so nothing is worked around here.
+
+The server reads at most 16 MiB per upstream answer (the kit's `MAX_UPSTREAM_BYTES`), so no tool
+asks for a whole big table at once (`{ all: true }`): `PAGE_ROWS` keeps every page under ~7 MB
+(2026-11-19: 30,000 measurement rows 6.4 MB in about 2 s). The default `--max-pages` (10) reads
+up to 300,000 measurement rows; the table had 187,707. The first call that needs the measurement
+table takes about 15–20 s of the 45 s call deadline; later calls answer from memory for 15
+minutes (about 10 MB for the whole table in columns).
+
+**The kit.** Everything in `apps/mcp` but `tools.ts`, `api.ts`, `test/helpers.ts`,
+`test/tools.test.ts` and the conformance tests' adapter blocks, plus `packages/log`,
+`apps/cli/src/cli/limits.ts`, `tools/image/` (but `smoke.json`), `tools/interop/` (but
+`interop.json`), `tools/bump.mjs`, `tools/pack/` and the workflows `ci.yml`, `images.yml`,
+`release.yml` and `publish.yml`, is the kit of `create-cli-template` (in the api-cli workspace),
+the same in every repository with an MCP server: a fix lands there first and comes here with
+`npm run sync-kit -- ../mudab-cli` (run in create-cli-template; `--check` lists the drift).
+
+Tests (`apps/mcp/test`) run in-process over the SDK's InMemoryTransport with raw JSON-RPC (the
+kit's `harness.ts`). The rules every server follows are the shared conformance tests
+`conformance-m1-…` to `conformance-m10-…` (protocol and tool rules, HTTP, Host and Origin,
+stdio with the built bin, config, limiter, result shaping, drain, call errors, MCP.md), each with
+an adapter block naming this repo's calls and mock answers; `tools.test.ts` holds this server's
+own (the five tools, the traps). The mock API is the client's `test/tables.ts` (`mudabApi`,
+`sampleTables`, `apiLog`): every endpoint answers POST only (anything else 405), honours the
+body's range and nothing else, as the live server does, and wraps the rows under the live key;
+the rows are live rows of 2026-11-19, a few per trap (a station in two compartments, L1's two
+regions, mercury in three compartment lists but under biota in the combined one, WAVHT in m and
+on a scale, AIRTEMP without a unit, PLC nulls, a 2014 kg/a value, a short last year, a station
+under XX and SH, the unmonitored area). The stdio tests start the built bin (30 s each).
+`tools/interop/` checks the built server against the official client 2.4.0 (stdio and HTTP;
+legacy, auto and pinned 2026-07-28) in ci.yml's `interop` job; it has its own lockfile and is
+never installed by the workspace, release or publish runs; the calls it makes and the mock's
+answers (live rows) are in `tools/interop/interop.json`. Both mocks answer by path, whatever the
+method, so MUDAB's POSTs reach them.
+
+## Container image
+
+`tools/image/` builds both apps' images (Dockerfile targets `cli` and `mcp`) from their release
+tarballs (`npm pack` output), never from source: `ADD` unpacks it onto distroless Node 24 (Debian
+13, `nonroot`, uid 65532), so the image holds exactly the files npm users get. The base,
+BuildKit, the test registry, skopeo (local runs only), syft and grype are pinned in `pins.json`;
+bump them in the deps round. A Node or Debian security fix reaches the image only through a new
+base digest, so it means a patch release.
+
+| Script | What it does |
+|---|---|
+| `build.mjs` | Multi-arch OCI archive (amd64, arm64), reproducible: no provenance or SBOM attestation, timestamps from `SOURCE_DATE_EPOCH` (default: the HEAD commit's time). Two builds give the same index digest; compare index digests, not files. |
+| `push.mjs` | Copies the archive to a registry with skopeo (`--all --preserve-digests`) and checks the digest the registry serves. Used for the local test registry and for ghcr.io. |
+| `smoke.mjs` | Runs the image read-only, without capabilities, as an arbitrary uid: `--version`, `--help`, a network error (exit 6), one request to a mock upstream (`smoke.json`: `plc-stations --count 5` against three recorded stations; the mock answers the POST by path), and `docker stop`, which must end a waiting call with 143 in under 5 s. |
+| `sbom.mjs` | One CycloneDX SBOM per platform with syft, and with `--gate true` grype over them: a fixable high or critical finding fails. Accepted findings go into `.grype.yaml` with a reason. CI only. |
+
+Locally (colima; the scripts never read your docker config, so no credential helper is asked;
+on macOS port 5000 is often taken by the AirPlay receiver, hence 5055):
+
+```bash
+export DOCKER_HOST=unix://$HOME/.colima/default/docker.sock
+npm pack --workspace apps/cli --pack-destination dist-artifacts
+node tools/image/build.mjs --app cli --tarball dist-artifacts/<tarball>.tgz --out dist-artifacts/cli.oci.tar
+docker run -d -p 127.0.0.1:5055:5000 <registry pin from pins.json>
+node tools/image/push.mjs --archive dist-artifacts/cli.oci.tar --to 127.0.0.1:5055/mudab-cli:dev
+node tools/image/smoke.mjs --app cli --image 127.0.0.1:5055/mudab-cli@<index digest>
+```
+
+In CI: `images.yml` does all of it on every push and weekly, with the arm64 image smoke-tested on
+an arm64 runner and the vulnerability gate. In `release.yml` the job `image` builds from the
+checked tarball and records the archive's digest, `image-sbom` makes the SBOMs (no gate: the
+scanner's database changes daily), `attest` signs build provenance for the tarball, the archive
+and the image index, and the release attaches the archive, the image SBOMs and `SHA256SUMS`.
+`publish.yml` publishes the release's own files: both tarballs to npm and both archives to
+`ghcr.io/maschinenlesbar-org/mudab-cli` and `…/mudab-mcp` (with the run's `GITHUB_TOKEN`), each
+checked first against the immutable release (`gh release verify-asset`) and the provenance
+`release.yml` signed for that tag (`gh attestation verify`).
+`apps/cli/test/conformance-p32-image-pipeline.test.ts` (shared) pins these rules.
+
+As PID 1 the bin shim listens for SIGINT, SIGTERM and SIGHUP (`exitOnSignalsAsPid1`): without
+a listener the kernel drops them, and `docker stop` would wait 10 s and kill. In a container
+the CLI reads the cgroup limits (`limits.ts`): under a memory limit the default
+`--max-response-bytes` is an eighth of it, under a pids limit below 12 it refuses before any
+request, and a leading program name (`docker run <image> mudab plc-stations`) is dropped.
 
 ## Website
 
