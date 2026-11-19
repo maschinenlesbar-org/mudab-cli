@@ -1,0 +1,404 @@
+{
+  "comment": "What tools/interop/interop.mjs needs that is particular to this repo: the mock upstream answer per path (under --base-url http://127.0.0.1:<port>; the client POSTs to /<TABLE> under it, and the mock answers by path whatever the method), how many tools the server lists, and the calls to make with what each must answer. Live rows recorded on 2026-11-19, a few per table: three project stations (L1 with both its regions, Darss Sill of BSH and IOW), mercury and nitrogen in the parameter lists, four values of station OMMVZBA15, the 2023 and 2024 nitrogen loads of Peene, Warnow and the unmonitored Western Baltic area.",
+  "answers": {
+    "/PROJECTSTATION_SMALL": {
+      "V_MUDAB_PROJECTSTATION": [
+        {
+          "metadataid": 31,
+          "PROJECTSTATIONID": 374,
+          "NAME_PS": "WB1",
+          "REGION": "Nordsee",
+          "INSTITUT": "BSH"
+        },
+        {
+          "metadataid": 31,
+          "PROJECTSTATIONID": 55,
+          "NAME_PS": "L1",
+          "REGION": "Ostsee",
+          "INSTITUT": "IOW"
+        },
+        {
+          "metadataid": 31,
+          "PROJECTSTATIONID": 622,
+          "NAME_PS": "Darss Sill",
+          "REGION": "Ostsee",
+          "INSTITUT": "IOW"
+        },
+        {
+          "metadataid": 31,
+          "PROJECTSTATIONID": 464,
+          "NAME_PS": "L1",
+          "REGION": "Nordsee",
+          "INSTITUT": "BSH"
+        },
+        {
+          "metadataid": 31,
+          "PROJECTSTATIONID": 396,
+          "NAME_PS": "L1",
+          "REGION": "Nordsee",
+          "INSTITUT": "BSH"
+        },
+        {
+          "metadataid": 31,
+          "PROJECTSTATIONID": 383,
+          "NAME_PS": "Darss Sill",
+          "REGION": "Ostsee",
+          "INSTITUT": "BSH"
+        }
+      ]
+    },
+    "/MV_PARAMETER": {
+      "MV_PARAMETER": [
+        {
+          "metadataid": 33,
+          "COMPT_DS": "MM",
+          "PARAMETER": "HGTOR",
+          "PARAMETERGRUPPE": "O-MET",
+          "PARAM_NAME": "total organic mercury",
+          "PARGROUP": "O-MET",
+          "PARAMGROUP_NAME": "Organo-metallic compounds"
+        },
+        {
+          "metadataid": 33,
+          "COMPT_DS": "CF",
+          "PARAMETER": "HG",
+          "PARAMETERGRUPPE": "I-MET",
+          "PARAM_NAME": "mercury",
+          "PARGROUP": "I-MET",
+          "PARAMGROUP_NAME": "Metals and metalloids"
+        },
+        {
+          "metadataid": 33,
+          "COMPT_DS": "CS",
+          "PARAMETER": "NTOT",
+          "PARAMETERGRUPPE": "I-NUT",
+          "PARAM_NAME": "total nitrogen (N)",
+          "PARGROUP": "I-NUT",
+          "PARAMGROUP_NAME": "Nutrients"
+        }
+      ]
+    },
+    "/MV_PARAMETER_WASSER": {
+      "MV_PARAMETER_WASSER": [
+        {
+          "metadataid": 37,
+          "COMPT_DS": "CW",
+          "PARAMETER": "NTOT",
+          "PARAMETERGRUPPE": "I-NUT",
+          "PARAM_NAME": "total nitrogen (N)",
+          "PARGROUP": "I-NUT",
+          "PARAMGROUP_NAME": "Nutrients"
+        },
+        {
+          "metadataid": 37,
+          "COMPT_DS": "CW",
+          "PARAMETER": "HG",
+          "PARAMETERGRUPPE": "I-MET",
+          "PARAM_NAME": "mercury",
+          "PARGROUP": "I-MET",
+          "PARAMGROUP_NAME": "Metals and metalloids"
+        }
+      ]
+    },
+    "/MV_PARAMETER_SEDIMENT": {
+      "MV_PARAMETER_SEDIMENT": [
+        {
+          "metadataid": 35,
+          "COMPT_DS": "CS",
+          "PARAMETER": "HG",
+          "PARAMETERGRUPPE": "I-MET",
+          "PARAM_NAME": "mercury",
+          "PARGROUP": "I-MET",
+          "PARAMGROUP_NAME": "Metals and metalloids"
+        },
+        {
+          "metadataid": 35,
+          "COMPT_DS": "CS",
+          "PARAMETER": "NTOT",
+          "PARAMETERGRUPPE": "I-NUT",
+          "PARAM_NAME": "total nitrogen (N)",
+          "PARGROUP": "I-NUT",
+          "PARAMGROUP_NAME": "Nutrients"
+        }
+      ]
+    },
+    "/MV_PARAMETER_BIOTA": {
+      "MV_PARAMETER_BIOTA": [
+        {
+          "metadataid": 36,
+          "COMPT_DS": "CF",
+          "PARAMETER": "HG",
+          "PARAMETERGRUPPE": "I-MET",
+          "PARAM_NAME": "mercury",
+          "PARGROUP": "I-MET",
+          "PARAMGROUP_NAME": "Metals and metalloids"
+        }
+      ]
+    },
+    "/MV_PARAMETER_BIOLOGIE": {
+      "MV_PARAMETER_BIOLOGIE": [
+        {
+          "metadataid": 34,
+          "COMPT_DS": "BL",
+          "PARAMETER": "BMDRYWT",
+          "PARAMETERGRUPPE": "B-COM",
+          "PARAM_NAME": "Biomass - dry weight",
+          "PARGROUP": "B-COM",
+          "PARAMGROUP_NAME": "Biological community parameters"
+        }
+      ]
+    },
+    "/MV_STATION_MSMNT": {
+      "MV_STATION_MSMNT": [
+        {
+          "metadataid": 39,
+          "STATNAME_ST": "OMMVZBA15",
+          "PARAMETERID_PM": "APSurTemp THRNFNON degC IFAG",
+          "STATNAME_DATE_TIME": "OMMVZBA15 20111019 0849",
+          "PARAMCODE_PM": "SurTemp",
+          "DATE_STM": "20111019",
+          "TIME_STM": "0849",
+          "VALUE_MS": 11.8
+        },
+        {
+          "metadataid": 39,
+          "STATNAME_ST": "OMMVZBA15",
+          "PARAMETERID_PM": "APSurTemp THRNFNON degC IFAG",
+          "STATNAME_DATE_TIME": "OMMVZBA15 20111019 0853",
+          "PARAMCODE_PM": "SurTemp",
+          "DATE_STM": "20111019",
+          "TIME_STM": "0853",
+          "VALUE_MS": 11.8
+        },
+        {
+          "metadataid": 39,
+          "STATNAME_ST": "OMMVZBA15",
+          "PARAMETERID_PM": "APSurTemp THRNFNON degC IFAG",
+          "STATNAME_DATE_TIME": "OMMVZBA15 20111019 0857",
+          "PARAMCODE_PM": "SurTemp",
+          "DATE_STM": "20111019",
+          "TIME_STM": "0857",
+          "VALUE_MS": 11.8
+        },
+        {
+          "metadataid": 39,
+          "STATNAME_ST": "OMMVZBA15",
+          "PARAMETERID_PM": "APSurTemp THRNFNON degC IFAG",
+          "STATNAME_DATE_TIME": "OMMVZBA15 20111019 0849",
+          "PARAMCODE_PM": "SurTemp",
+          "DATE_STM": "20111019",
+          "TIME_STM": "0849",
+          "VALUE_MS": 11.8
+        }
+      ]
+    },
+    "/V_MESSWERTE_PLC": {
+      "V_MESSWERTE_PLC": [
+        {
+          "metadataid": 111,
+          "VALUE": 975.548684,
+          "NAME": "Ntot",
+          "STATION_CODE": "CDE0017",
+          "LAND_CD": "MV",
+          "STATION_NAME": "ROSTOCK",
+          "ST_LAT": 54.0833,
+          "ST_LON": 12.15,
+          "SUBCM_CODE": "SCDE00069",
+          "SUBCM_NAME": "WARNOW",
+          "MON_TYPE": "MON_RIVER_LOAD",
+          "PARAM_ID": "16",
+          "PERIOD_NAME": "2023",
+          "PERIOD_TYPE": "A",
+          "NUMMER": 7060,
+          "PARAM_TYPE": "TOT",
+          "AREA": 3020.9,
+          "VAL_UNIT": "t/a"
+        },
+        {
+          "metadataid": 111,
+          "VALUE": 2796.507925,
+          "NAME": "Ntot",
+          "STATION_CODE": "CDE0007",
+          "LAND_CD": "MV",
+          "STATION_NAME": "ANKLAM",
+          "ST_LAT": 53.85,
+          "ST_LON": 13.6833,
+          "SUBCM_CODE": "SCDE00039",
+          "SUBCM_NAME": "PEENE",
+          "MON_TYPE": "MON_RIVER_LOAD",
+          "PARAM_ID": "16",
+          "PERIOD_NAME": "2024",
+          "PERIOD_TYPE": "A",
+          "NUMMER": 7432,
+          "PARAM_TYPE": "TOT",
+          "AREA": 4967.7,
+          "VAL_UNIT": "t/a"
+        },
+        {
+          "metadataid": 111,
+          "VALUE": 1656.518409,
+          "NAME": "Ntot",
+          "STATION_CODE": "CDE0017",
+          "LAND_CD": "MV",
+          "STATION_NAME": "ROSTOCK",
+          "ST_LAT": 54.0833,
+          "ST_LON": 12.15,
+          "SUBCM_CODE": "SCDE00069",
+          "SUBCM_NAME": "WARNOW",
+          "MON_TYPE": "MON_RIVER_LOAD",
+          "PARAM_ID": "16",
+          "PERIOD_NAME": "2024",
+          "PERIOD_TYPE": "A",
+          "NUMMER": 7973,
+          "PARAM_TYPE": "TOT",
+          "AREA": 3020.9,
+          "VAL_UNIT": "t/a"
+        },
+        {
+          "metadataid": 111,
+          "VALUE": 1578.382109,
+          "NAME": "Ntot",
+          "STATION_CODE": "CDE0007",
+          "LAND_CD": "MV",
+          "STATION_NAME": "ANKLAM",
+          "ST_LAT": 53.85,
+          "ST_LON": 13.6833,
+          "SUBCM_CODE": "SCDE00039",
+          "SUBCM_NAME": "PEENE",
+          "MON_TYPE": "MON_RIVER_LOAD",
+          "PARAM_ID": "16",
+          "PERIOD_NAME": "2023",
+          "PERIOD_TYPE": "A",
+          "NUMMER": 8414,
+          "PARAM_TYPE": "TOT",
+          "AREA": 4967.7,
+          "VAL_UNIT": "t/a"
+        },
+        {
+          "metadataid": 111,
+          "VALUE": 4389.267087,
+          "NAME": "Ntot",
+          "STATION_CODE": "SCDE00136",
+          "LAND_CD": "UNMON",
+          "STATION_NAME": "WEBDELAND",
+          "ST_LAT": 0,
+          "ST_LON": 0,
+          "SUBCM_CODE": "SCDE00136",
+          "SUBCM_NAME": "WEBDELAND",
+          "MON_TYPE": "UNMONITORED",
+          "PARAM_ID": "16",
+          "PERIOD_NAME": "2023",
+          "PERIOD_TYPE": "A",
+          "NUMMER": 18727,
+          "PARAM_TYPE": "TOT",
+          "AREA": 3801,
+          "VAL_UNIT": "t/a"
+        },
+        {
+          "metadataid": 111,
+          "VALUE": 4803.523228,
+          "NAME": "Ntot",
+          "STATION_CODE": "SCDE00136",
+          "LAND_CD": "UNMON",
+          "STATION_NAME": "WEBDELAND",
+          "ST_LAT": 0,
+          "ST_LON": 0,
+          "SUBCM_CODE": "SCDE00136",
+          "SUBCM_NAME": "WEBDELAND",
+          "MON_TYPE": "UNMONITORED",
+          "PARAM_ID": "16",
+          "PERIOD_NAME": "2024",
+          "PERIOD_TYPE": "A",
+          "NUMMER": 18887,
+          "PARAM_TYPE": "TOT",
+          "AREA": 3801,
+          "VAL_UNIT": "t/a"
+        }
+      ]
+    }
+  },
+  "tools": 5,
+  "calls": [
+    {
+      "name": "findStations",
+      "arguments": {
+        "kind": "project",
+        "institute": "BSH"
+      },
+      "expect": {
+        "status": "ok",
+        "total": 3,
+        "stations.1.name": "L1",
+        "stations.1.regions": [
+          "Nordsee",
+          "Ostsee"
+        ]
+      }
+    },
+    {
+      "name": "findParameters",
+      "arguments": {
+        "name": "mercury"
+      },
+      "expect": {
+        "status": "ok",
+        "parameters.0.code": "HG",
+        "parameters.0.compartments": [
+          "CF",
+          "CS",
+          "CW"
+        ]
+      }
+    },
+    {
+      "name": "getMeasurements",
+      "arguments": {
+        "station": "OMMVZBA15"
+      },
+      "expect": {
+        "status": "ok",
+        "station": "OMMVZBA15",
+        "series.0.parameter": "SurTemp",
+        "series.0.unit": "degC"
+      }
+    },
+    {
+      "name": "getRiverLoads",
+      "arguments": {
+        "parameter": "Stickstoff",
+        "year": 2024
+      },
+      "expect": {
+        "status": "ok",
+        "rows.0.river": "PEENE",
+        "searched.kind": "river"
+      }
+    },
+    {
+      "name": "getRiverLoads",
+      "arguments": {
+        "parameter": "phosph"
+      },
+      "expect": {
+        "status": "ambiguous"
+      }
+    },
+    {
+      "name": "findStations",
+      "arguments": {
+        "kind": "project",
+        "name": "Helgoland"
+      },
+      "expect": {
+        "status": "empty"
+      }
+    },
+    {
+      "name": "findStations",
+      "arguments": {
+        "limit": 500
+      },
+      "error": true
+    }
+  ]
+}
