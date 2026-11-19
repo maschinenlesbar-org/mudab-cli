@@ -1,0 +1,39 @@
+{
+  "comment": "What tools/image/smoke.mjs needs that is particular to this repo: the bin (its log topic), a command that makes one request (a POST: the mock answers by path, whatever the method), the exit code of a network error (6 in this CLI), the mock answer to that request (by path, under --base-url http://mock:8080), and a string the printed answer contains. The answer: three live HELCOM PLC stations of 2026-11-19.",
+  "bin": "mudab",
+  "command": [
+    "plc-stations",
+    "--count",
+    "5"
+  ],
+  "networkErrorExit": 6,
+  "answers": {
+    "/V_PLC_STATION": {
+      "V_PLC_STATION": [
+        {
+          "metadataid": 112,
+          "STATION_CODE": "CDE0007",
+          "LAND_CD": "MV",
+          "STATION_NAME": "ANKLAM",
+          "ST_LAT": 53.85,
+          "ST_LON": 13.6833,
+          "SUBCM_CODE": "SCDE00039",
+          "SUBCM_NAME": "PEENE",
+          "MON_TYPE": "MON_RIVER_LOAD"
+        },
+        {
+          "metadataid": 112,
+          "STATION_CODE": "CDE0017",
+          "LAND_CD": "MV",
+          "STATION_NAME": "ROSTOCK",
+          "ST_LAT": 54.0833,
+          "ST_LON": 12.15,
+          "SUBCM_CODE": "SCDE00069",
+          "SUBCM_NAME": "WARNOW",
+          "MON_TYPE": "MON_RIVER_LOAD"
+        }
+      ]
+    }
+  },
+  "expectStdout": "ANKLAM"
+}
