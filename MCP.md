@@ -72,16 +72,18 @@ For scripts and shared configs, pin a release and its digest from the
 | `getRiverLoads` | HELCOM PLC loads into the Baltic (nitrogen, phosphorus, metals, flow) of monitored rivers, treatment plants or unmonitored areas, ranked or totalled per station, year, kind or Land. |
 | `listRows` | The raw rows of any MUDAB table: a page, or the rows whose field equals a value. |
 
-MUDAB filters nothing on the server, so each tool reads its table (in pages of at most ~7 MB)
-and selects there. The station measurement table is ~42 MB: the first call that needs it takes
-about 20 s, and the table is then kept in memory for 15 minutes. Stations are counted by name,
-not by table row, and the measurement table's exact copies of a row (it repeats most rows) once; units are kept apart (a wave height in metres is never compared with one on a
-scale); null values are dropped and counted.
+MUDAB filters nothing on the server, so each tool reads its table (in pages of at most ~7 MB) and
+selects there. The station measurement table is ~42 MB: the first call that needs it takes about 20
+s, and the table is then kept in memory for 15 minutes. Stations are counted by name, not by table
+row, and the measurement table's exact copies of a row (it repeats most rows) once; units are kept
+apart (a wave height in metres is never compared with one on a scale); null values are dropped and
+counted.
 
 Every tool only reads. An answer is JSON (`structuredContent` and the same as text), with the
-`source` it came from and the data licence. A text over 2000 characters is cut and ends in `…[cut, N
-characters in all]`, and the answer says `truncated`. A failure is a tool error that says what to
-change (one over 5000 characters loses its middle, never its end, where the reason is).
+`source` it came from (whole, never cut like the data) and the data licence. A text over 2000
+characters is cut and ends in `…[cut, N characters in all]`, and the answer says `truncated`. A
+failure is a tool error that says what to change (one over 5000 characters loses its middle, never
+its end, where the reason is).
 
 ## Options
 
