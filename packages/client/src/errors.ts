@@ -382,3 +382,26 @@ export class MudabValidationError extends MudabError {}
 
 /** The response body could not be parsed as the expected JSON shape. */
 export class MudabParseError extends MudabError {}
+
+/**
+ * A page with more rows than its range asked for: the server ignored the range, so the rows are
+ * not the ones asked for. The message ends in `advice`, what the caller can do instead; the use
+ * cases, which read in pages and offer no other way, give it again with their own (`withAdvice`).
+ */
+export class MudabRangeError extends MudabParseError {
+  constructor(
+    /** The request (`POST <url>`, userinfo redacted). */
+    readonly request: string,
+    readonly from: number,
+    readonly asked: number,
+    readonly got: number,
+    advice: string,
+  ) {
+    super(`${request}: asked for at most ${asked} rows (from ${from}), got ${got}. The server did not honour the range, so these are not the rows asked for; ${advice}`);
+  }
+
+  /** The same error with other advice. */
+  withAdvice(advice: string): MudabRangeError {
+    return new MudabRangeError(this.request, this.from, this.asked, this.got, advice);
+  }
+}

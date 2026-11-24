@@ -20,6 +20,7 @@ import {
   MAX_MESSAGE_VALUE_LENGTH,
   MudabApiError,
   MudabParseError,
+  MudabRangeError,
   MudabValidationError,
   cutForMessage,
   cutText,
@@ -405,12 +406,7 @@ export class MudabClient {
     // `from` > 0 they start at row 0): an error, never a silently larger page.
     const count = body.range?.count;
     if (count !== undefined && rows.length > count) {
-      throw new MudabParseError(
-        `${request}: asked for at most ${count} rows ` +
-          `(from ${body.range?.from ?? 0}), got ${rows.length}. The server did not honour the range, ` +
-          `so these are not the rows asked for; fetch the whole table ({ all: true }; --all on the ` +
-          `CLI) and select rows yourself.`,
-      );
+      throw new MudabRangeError(request, body.range?.from ?? 0, count, rows.length, "fetch the whole table ({ all: true }; --all on the CLI) and select rows yourself.");
     }
     return rows;
   }

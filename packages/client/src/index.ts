@@ -34,6 +34,7 @@ export {
   MudabNetworkError,
   MudabValidationError,
   MudabParseError,
+  MudabRangeError,
   redactUrl,
   credentialsIn,
   echoedCredentialForms,

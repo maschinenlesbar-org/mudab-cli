@@ -14,7 +14,7 @@ import { TOOLS } from "../src/mcp/tools.js";
 import { limitTransport } from "../src/mcp/limiter.js";
 import { connect } from "./harness.js";
 import type { HttpRequest } from "../src/mcp/api.js";
-import { apiLog, makeMockTransport, mudab, mudabApi, sampleTables } from "./helpers.js";
+import { apiLog, makeMockTransport, mudab, mudabApi, rawResponse, sampleTables } from "./helpers.js";
 
 const BASE = "https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements";
 
@@ -69,6 +69,18 @@ test("a measurement table read cut off by the call deadline goes on at the next 
   assertOptionsFit(text);
   assert.equal(answer["status"], "ok", JSON.stringify(answer));
   assert.deepEqual(log.requests.map((r) => r.from), [0, 30_000, 60_000], "page 0 is read once");
+});
+
+test("an answer over a size cap says what helps, and that nothing does when MUDAB's own page is too large", async () => {
+  const huge = makeMockTransport(() => rawResponse(Buffer.alloc(17 * 1024 * 1024, 32), "application/json"));
+  const connection = await connect({ transport: huge });
+  const result = await connection.call("findStations", { kind: "plc", limit: 1 });
+  await connection.close();
+  assert.equal(result.isError, true);
+  const text = result.content[0]?.text ?? "";
+  assert.match(text, /larger than this server accepts \(16 MiB\)/);
+  assert.match(text, /MUDAB's own pages are of a fixed size .* no argument helps/);
+  assertOptionsFit(text);
 });
 
 test("findStations: stations once by name, regions from the project station, conflicts kept; the source and the terms in the result", async () => {

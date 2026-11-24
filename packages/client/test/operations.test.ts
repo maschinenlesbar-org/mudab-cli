@@ -418,6 +418,25 @@ test("rows of another shape are an error naming the field, never no value or no 
   assert.equal((await findStations(nulls, { kind: "plc" })).status, "ok");
 });
 
+test("a server that ignores the range is an error a caller of the use cases can act on: no advice to fetch the whole table", async () => {
+  // Tables one row longer than a page, answered whole whatever the range asks for.
+  const tables = sampleTables();
+  tables.plcStations = Array.from({ length: 20_001 }, (_, i) => tables.plcStations[i % tables.plcStations.length] as (typeof tables.plcStations)[number]);
+  tables.plcMeasurements = Array.from({ length: 25_001 }, (_, i) => tables.plcMeasurements[i % tables.plcMeasurements.length] as (typeof tables.plcMeasurements)[number]);
+  const api = mudabApi(tables);
+  const transport = async (req: Parameters<typeof api>[0]) => api({ ...req, body: Buffer.from("{}") });
+  const client = new MudabClient({ transport });
+  for (const call of [() => getRiverLoads(client, {}), () => findStations(client, { kind: "plc" }), () => listRows(client, { table: "plcStations", limit: 1 })]) {
+    await assert.rejects(call(), (err: unknown) => {
+      assert.ok(err instanceof MudabParseError);
+      assert.match(err.message, /asked for at most \d+ rows \(from 0\), got \d+\. The server did not honour the range, so these are not the rows asked for; the table can't be read in pages/);
+      assert.doesNotMatch(err.message, /--all|all: true/);
+      return true;
+    });
+  }
+  await assert.rejects(client.plcStations({ range: { from: 0, count: 1 } }), /fetch the whole table \(\{ all: true \}; --all on the CLI\)/, "the client's own advice stays for its callers");
+});
+
 test("raw rows: a page is one ranged request; a field selects across the whole table; an unknown field names the columns", async () => {
   const { client, log } = clientOn();
   const page = await listRows(client, { table: "projectStations", offset: 2, limit: 2 });

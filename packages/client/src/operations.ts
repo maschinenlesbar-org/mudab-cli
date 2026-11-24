@@ -23,7 +23,7 @@
 
 import type { MudabClient } from "./client.js";
 import { quoteServerText } from "./engine.js";
-import { MudabParseError, MudabValidationError, cutForMessage } from "./errors.js";
+import { MudabParseError, MudabRangeError, MudabValidationError, cutForMessage } from "./errors.js";
 import type { HelcomPLCStation, ListRequest, Messstation, MesswertPLC, Parameter, ParameterPLC, ParameterValue, ProjectStation } from "./types.js";
 import { assertValid, normalizeToken, tokenProblem } from "./validate.js";
 
@@ -67,9 +67,27 @@ const COMPARTMENT_LISTS = { CW: "wasser", CS: "sediment", CF: "biota", BL: "biol
 
 type Fetch<T> = (req: ListRequest) => Promise<T[]>;
 
-/** How to read a table's page through the client. */
+/**
+ * What a caller of the use cases can do when the server ignores the range: nothing (they read in
+ * pages and offer no other way), unlike a caller of the client, who can fetch the whole table.
+ */
+const RANGE_IGNORED = "the table can't be read in pages, which is how these answers are computed: MUDAB may have changed; try again later, and report it if it stays.";
+
+/** How to read a table's page through the client; a page that ignores its range is said with {@link RANGE_IGNORED}. */
 function fetcher(client: MudabClient, table: TableName, compartment?: (typeof COMPARTMENT_LISTS)[keyof typeof COMPARTMENT_LISTS]): Fetch<Record<string, unknown>> {
-  const fetchers: Record<TableName, Fetch<unknown>> = {
+  const fetch = fetchers(client, compartment)[table] as Fetch<Record<string, unknown>>;
+  return async (req) => {
+    try {
+      return await fetch(req);
+    } catch (err) {
+      throw err instanceof MudabRangeError ? err.withAdvice(RANGE_IGNORED) : err;
+    }
+  };
+}
+
+/** The client's method for each table. */
+function fetchers(client: MudabClient, compartment?: (typeof COMPARTMENT_LISTS)[keyof typeof COMPARTMENT_LISTS]): Record<TableName, Fetch<unknown>> {
+  return {
     stations: (req) => client.stations(req),
     projectStations: (req) => client.projectStations(req),
     parameters: (req) => client.parameters(req, compartment),
@@ -78,7 +96,6 @@ function fetcher(client: MudabClient, table: TableName, compartment?: (typeof CO
     plcParameters: (req) => client.plcParameters(req),
     plcMeasurements: (req) => client.plcMeasurements(req),
   };
-  return fetchers[table] as Fetch<Record<string, unknown>>;
 }
 
 /** What `readPages` read: the rows, and whether that was the whole table. */
@@ -856,7 +873,7 @@ async function readOn(client: MudabClient, read: TableRead, maxPages: number, no
   };
   // The table repeats most rows several times (187,707 rows, about 37,000-40,000 distinct on
   // 2026-11-19): a row seen before, field for field, is counted once.
-  const pages = await readPages<ParameterValue>((req) => client.measurements(req), PAGE_ROWS.measurements, maxPages, (rows, page) => {
+  const pages = await readPages(fetcher(client, "measurements") as Fetch<ParameterValue>, PAGE_ROWS.measurements, maxPages, (rows, page) => {
     checkRows("measurements", TABLE_PATHS.measurements, rows as Record<string, unknown>[]);
     for (const r of rows) {
       table.rows += 1;
