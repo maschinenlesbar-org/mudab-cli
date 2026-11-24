@@ -297,6 +297,29 @@ test("parameter words resolve or are ambiguous; flow defaults to the flow gauges
   assert.match(none.status === "empty" ? none.reason : "", /No PLC value matches parameter "Ntot", river "Oder" .*kind river.*try another kind/);
 });
 
+test("station names that differ only in case or punctuation: the exact name selects one, listRows gives its rows only", async () => {
+  const tables = sampleTables();
+  const v = (name: string, value: number) => ({ metadataid: 39, STATNAME_ST: name, PARAMETERID_PM: "APWAVHT VISONANON m IFAG", STATNAME_DATE_TIME: name, PARAMCODE_PM: "WAVHT", DATE_STM: "20200101", TIME_STM: "1200", VALUE_MS: value });
+  tables.measurements.push(v("EIDER V Eider outer", 1.5), v("Eider V Eider outer", 2.5), v("OMO5_1", 1), v("OMO5(1)", 2), v("OMO5_(1)", 3));
+  for (const name of ["OMO5_1", "OMO5(1)", "OMO5_(1)"]) tables.stations.push({ metadataid: 32, STATNAME_ST: name, NAME_PS: "OMO5", STATIONTYPE_ST: "Normal", COMPT_DS: "CW" });
+  const { client } = clientOn(tables);
+  for (const [name, value] of [["EIDER V Eider outer", 1.5], ["Eider V Eider outer", 2.5], ["OMO5(1)", 2], [" OMO5_(1) ", 3]] as const) {
+    const answer = await getMeasurements(client, { station: name, now: () => 0 });
+    assert.equal(answer.status, "ok", `${name}: ${JSON.stringify(answer)}`);
+    assert.deepEqual(answer.status === "ok" && "values" in answer ? [answer.station, answer.values.map((x) => x.value)] : [], [name.trim(), [value]]);
+  }
+  const folded = await getMeasurements(client, { station: "eider v eider outer", now: () => 0 });
+  assert.equal(folded.status, "ambiguous", "two names fit it in another case; neither is it");
+  assert.match(folded.status === "ambiguous" ? folded.reason : "", /exactly as listed/);
+  const exact = await listRows(client, { table: "stations", field: "STATNAME_ST", value: "OMO5_1" });
+  assert.deepEqual(exact.status === "ok" ? [exact.total, exact.rows.map((r) => r["STATNAME_ST"])] : [], [1, ["OMO5_1"]]);
+  const caseless = await listRows(client, { table: "measurements", field: "STATNAME_ST", value: "eider v eider outer" });
+  assert.deepEqual(caseless.status === "ok" ? [caseless.total, caseless.rows.map((r) => r["STATNAME_ST"])] : [], [2, ["EIDER V Eider outer", "Eider V Eider outer"]]);
+  assert.match(caseless.status === "ok" ? caseless.notes.join(" ") : "", /No row has it exactly; these 2 spellings equal it in another case: "EIDER V Eider outer", "Eider V Eider outer"/);
+  const one = await listRows(client, { table: "measurements", field: "STATNAME_ST", value: "Eider V Eider outer" });
+  assert.deepEqual(one.status === "ok" ? one.rows.map((r) => r["STATNAME_ST"]) : [], ["Eider V Eider outer"]);
+});
+
 test("raw rows: a page is one ranged request; a field selects across the whole table; an unknown field names the columns", async () => {
   const { client, log } = clientOn();
   const page = await listRows(client, { table: "projectStations", offset: 2, limit: 2 });

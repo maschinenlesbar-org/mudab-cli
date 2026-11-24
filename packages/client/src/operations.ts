@@ -261,14 +261,18 @@ export interface Ambiguous<S> {
 }
 
 /**
- * The one name in `names` that `query` means: the one equal to it (folded), else the only one
- * containing it. Several containing it are ambiguous (sorted, exact-length first); none is undefined.
+ * The one name in `names` that `query` means: the one identical to it (names that differ only in
+ * case or punctuation are different names: "EIDER V Eider outer", "Eider V Eider outer"), else the
+ * one equal to it folded, else the only one containing it. Several are ambiguous (sorted,
+ * exact-length first); none is undefined.
  */
 function pickName(names: Iterable<string>, query: string): { name: string; variants: string[] } | { candidates: string[] } | undefined {
   const q = fold(query);
   const all = [...names];
-  const exact = all.filter((n) => fold(n) === q);
   const containing = all.filter((n) => fold(n).includes(q)).sort((a, b) => a.length - b.length || a.localeCompare(b));
+  const identical = all.find((n) => n.normalize("NFC") === query);
+  if (identical !== undefined) return { name: identical, variants: containing.filter((n) => n !== identical) };
+  const exact = all.filter((n) => fold(n) === q);
   if (exact.length === 1) return { name: exact[0] as string, variants: containing.filter((n) => n !== exact[0]) };
   if (exact.length > 1) return { candidates: exact.sort() };
   if (containing.length === 1) return { name: containing[0] as string, variants: [] };
@@ -881,7 +885,7 @@ export async function getMeasurements(client: MudabClient, input: GetMeasurement
       return { status: "empty", searched, reason: `No measurements for a station named ${JSON.stringify(station)}: the table has values for ${table.stations.length} stations, most stations have none. Find names with findStations, or call without station and with a parameter to list the stations that measured it.`, notes };
     }
     if ("candidates" in found) {
-      return { status: "ambiguous", searched, total: found.candidates.length, candidates: found.candidates.slice(0, 25), reason: `${found.candidates.length} station names contain ${JSON.stringify(station)}: ask which one is meant and call again with its full name.` };
+      return { status: "ambiguous", searched, total: found.candidates.length, candidates: found.candidates.slice(0, 25), reason: `${found.candidates.length} station names contain ${JSON.stringify(station)}: ask which one is meant and call again with its full name, exactly as listed (names that differ only in case or punctuation are different stations).` };
     }
     stationIndex = table.stations.indexOf(found.name);
     if (found.variants.length > 0) notes.push(`Other stations whose names contain it are separate stations: ${found.variants.slice(0, 10).join(", ")}${found.variants.length > 10 ? ", …" : ""}.`);
@@ -1212,7 +1216,7 @@ export interface ListRowsInput {
   table: TableName;
   /** For table parameters: one compartment's own list (wasser, sediment, biota, biologie). */
   compartment?: string | undefined;
-  /** A column to select on (exact value, any case); the whole table is then read. */
+  /** A column to select on (the exact value, else any case); the whole table is then read. */
   field?: string | undefined;
   value?: string | undefined;
   offset?: number | undefined;
@@ -1227,8 +1231,8 @@ export type RowsAnswer =
 
 /**
  * Raw rows of a table: a page from `offset` (one request), or, with `field` and `value`, the rows
- * whose field equals the value (trimmed, any case), read from the whole table in pages and paged
- * here, with their total.
+ * whose field is the value (trimmed), or when none is, those equal to it in another case, read from
+ * the whole table in pages and paged here, with their total.
  */
 export async function listRows(client: MudabClient, input: ListRowsInput): Promise<RowsAnswer> {
   const table = input.table;
@@ -1251,23 +1255,35 @@ export async function listRows(client: MudabClient, input: ListRowsInput): Promi
     if (rows.length === 0) return { status: "empty", searched, reason: `${TABLE_PATHS[table]} has no rows from offset ${offset}: the table is shorter.`, notes };
     return { status: "ok", searched, rows, ...(rows.length === limit ? { nextOffset: offset + limit } : {}), notes };
   }
-  const wanted = fold(value as string);
-  const kept: Record<string, unknown>[] = [];
-  let total = 0;
+  // The rows whose field is the value exactly; when there are none, those equal to it in another
+  // case. Values that differ only in case or punctuation are different (two station names live).
+  const wanted = value as string;
+  const caseless = (text: string): string => text.normalize("NFC").toLocaleLowerCase("de");
+  const wantedCaseless = caseless(wanted);
+  const exact = { kept: [] as Record<string, unknown>[], total: 0 };
+  const other = { kept: [] as Record<string, unknown>[], total: 0, spellings: new Set<string>() };
   let columns: string[] | undefined;
   const read = await readPages(fetch, PAGE_ROWS[table], maxPages, (rows) => {
     for (const row of rows) {
       columns ??= Object.keys(row);
       const cell = row[field];
-      if (cell === undefined || cell === null || fold(String(cell)) !== wanted) continue;
-      if (total >= offset && kept.length < limit) kept.push(row);
-      total += 1;
+      if (cell === undefined || cell === null) continue;
+      const text = String(cell).trim().normalize("NFC");
+      const bucket = text === wanted ? exact : exact.total === 0 && caseless(text) === wantedCaseless ? other : undefined;
+      if (bucket === undefined) continue;
+      if (bucket.total >= offset && bucket.kept.length < limit) bucket.kept.push(row);
+      bucket.total += 1;
+      if (bucket === other && other.spellings.size < 10) other.spellings.add(text);
     }
   });
   if (!read.complete) notes.push(partNote(table, maxPages));
   if (columns !== undefined && !columns.includes(field)) {
     throw new MudabValidationError(`Invalid field: ${TABLE_PATHS[table]} has no column ${JSON.stringify(cutForMessage(field))}; its columns are ${columns.join(", ")}.`);
   }
-  if (total === 0) return { status: "empty", searched, reason: `No row of ${TABLE_PATHS[table]} has ${field} equal to ${JSON.stringify(value)} (any case). Check the value's spelling in a page of rows (without field).`, notes };
-  return { status: "ok", searched, rows: kept, total, ...(offset + kept.length < total ? { nextOffset: offset + kept.length } : {}), notes };
+  const found = exact.total > 0 ? exact : other;
+  if (found.total === 0) return { status: "empty", searched, reason: `No row of ${TABLE_PATHS[table]} has ${field} equal to ${JSON.stringify(value)} (any case). Check the value's spelling in a page of rows (without field).`, notes };
+  if (found === other && other.spellings.size > 1) {
+    notes.push(`No row has it exactly; these ${other.spellings.size} spellings equal it in another case: ${[...other.spellings].map((t) => JSON.stringify(t)).join(", ")}. They may be different things (two stations): ask with one exactly to get its rows only.`);
+  }
+  return { status: "ok", searched, rows: found.kept, total: found.total, ...(offset + found.kept.length < found.total ? { nextOffset: offset + found.kept.length } : {}), notes };
 }

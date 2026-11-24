@@ -182,7 +182,7 @@ export const TOOLS: readonly ToolDefinition[] = [
     title: "Station measurements: temperature, wind, waves, Secchi depth",
     description: [
       'Measured values at monitoring stations (MV_STATION_MSMNT: weather and sea observations 1986-2025). Use it for "Wassertemperatur an Station OMMVZBA15", "Lufttemperatur an der Ostsee-Station DB16", "welche Stationen messen die Sichttiefe?", "Messwerte einer MUDAB-Station", "get water temperature measurements from a Baltic station", "which stations measured wave height?", "what does the measurement table hold?".',
-      "With station: its series (per parameter and unit: count, first and last date, min, max, mean) and the values, newest first, paged. With parameter only: the stations that measured it, most values first. With neither: what the table holds per parameter. Parameters: AIRTEMP, SurTemp (sea surface temperature), AIRPRES, WINSP, WindDir, _CLOUD, _RELH, _STATE (sea state), WAVHT, _WAVEH, SECCI, _ICE, _GLORA, _WHTR; a name or German word works. No substances (nutrients, metals): not in this table. Units differ within a parameter (WAVHT in m and as a scale sc; some rows state none): never compare across units. The table repeats most rows: exact copies are counted once. A station name must be exact or unique; OMMVZBA15 and OMMVZBA15_CW are different stations. The table (~42 MB) is read in pages: the first call takes about 20 s, later ones are quick for 15 minutes. " + CITE,
+      "With station: its series (per parameter and unit: count, first and last date, min, max, mean) and the values, newest first, paged. With parameter only: the stations that measured it, most values first. With neither: what the table holds per parameter. Parameters: AIRTEMP, SurTemp (sea surface temperature), AIRPRES, WINSP, WindDir, _CLOUD, _RELH, _STATE (sea state), WAVHT, _WAVEH, SECCI, _ICE, _GLORA, _WHTR; a name or German word works. No substances (nutrients, metals): not in this table. Units differ within a parameter (WAVHT in m and as a scale sc; some rows state none): never compare across units. The table repeats most rows: exact copies are counted once. A station name must be exact or unique; OMMVZBA15 and OMMVZBA15_CW are different stations, and so are names that differ only in case or punctuation (the exact spelling selects one). The table (~42 MB) is read in pages: the first call takes about 20 s, later ones are quick for 15 minutes. " + CITE,
       RULES,
     ].join("\n\n"),
     inputSchema: input({
@@ -258,7 +258,7 @@ export const TOOLS: readonly ToolDefinition[] = [
     title: "Raw rows of any MUDAB table",
     description: [
       'The rows of one MUDAB table as the API returns them, all fields: a page, or the rows whose field equals a value. Use it when the other tools don\'t reach a field ("alle Felder der Station", "Rohdaten der Tabelle", "rows of V_MESSWERTE_PLC where SUBCM_NAME is WARNOW", "show me the raw project-station rows"), or to look at a table\'s columns first.',
-      "Tables: stations (STATION_SMALL), projectStations, parameters (compartment: one compartment's own list), measurements (~190,000 rows), plcStations, plcParameters, plcMeasurements. Without field: one page from offset. With field and value: the whole table is read and the rows whose field equals value (any case) are listed, with their total; an unknown field is an error that names the columns. The server's own filter is ignored by it, so this is the only way to select. Fields are the API's (STATNAME_ST, NAME_PS, COMPT_DS, PARAMCODE_PM, DATE_STM YYYYMMDD …). Prefer the other tools: they know the traps. " + CITE,
+      "Tables: stations (STATION_SMALL), projectStations, parameters (compartment: one compartment's own list), measurements (~190,000 rows), plcStations, plcParameters, plcMeasurements. Without field: one page from offset. With field and value: the whole table is read and the rows whose field is value exactly are listed, with their total (when none is, those equal to it in another case, said in notes: names that differ only in case can be different stations); an unknown field is an error that names the columns. The server's own filter is ignored by it, so this is the only way to select. Fields are the API's (STATNAME_ST, NAME_PS, COMPT_DS, PARAMCODE_PM, DATE_STM YYYYMMDD …). Prefer the other tools: they know the traps. " + CITE,
       RULES,
     ].join("\n\n"),
     inputSchema: input(
@@ -266,7 +266,7 @@ export const TOOLS: readonly ToolDefinition[] = [
         table: { type: "string", enum: [...TABLES], description: "The table." },
         compartment: text(20, "Table parameters only: wasser, sediment, biota or biologie (that compartment's own list)."),
         field: text(40, 'A column, exactly as the API names it ("NAME_PS", "SUBCM_NAME").'),
-        value: text(200, "The value the field must equal (any case); with field."),
+        value: text(200, "The value the field must equal (exactly; when no row has it exactly, any case); with field."),
         offset,
         limit: limit(200, 50, "rows"),
       },
