@@ -46,7 +46,7 @@ test("measurement stations are counted by name, once per station, with every com
   if (answer.status !== "ok") return;
   assert.equal(answer.total, 1);
   assert.equal(answer.rows, 3, "the table repeats the station");
-  assert.deepEqual(answer.stations[0], { name: "220051", projectStation: "220051", compartments: ["BL", "CW"], stationTypes: ["Sublitoral"], regions: [], institutes: [] });
+  assert.deepEqual(answer.stations[0], { name: "220051", projectStations: ["220051"], compartments: ["BL", "CW"], stationTypes: ["Sublitoral"], regions: [], institutes: [] });
   assert.match(answer.notes.join(" "), /total counts station names/);
   assert.deepEqual(log.requests.map((r) => r.table), ["PROJECTSTATION_SMALL", "STATION_SMALL"]);
   assert.ok(mock.calls.every((call) => call.method === "POST"));
@@ -68,6 +68,18 @@ test("region and institute come from the project station; a name with several is
   assert.equal(project.rows, 4);
   const baltic = await findStations(client, { kind: "project", region: "Ostsee", name: "darss" });
   assert.deepEqual(baltic.status === "ok" ? names(baltic.stations) : [], ["Darss Sill"]);
+});
+
+test("a station whose rows name two project stations lists both, with the regions and institutes of both", async () => {
+  const tables = sampleTables();
+  tables.projectStations.push({ metadataid: 31, PROJECTSTATIONID: 7001, NAME_PS: "OMBMPK4", REGION: "Ostsee", INSTITUT: "IOW" }, { metadataid: 31, PROJECTSTATIONID: 7002, NAME_PS: "BMP K4", REGION: "Ostsee", INSTITUT: "BSH" });
+  tables.stations.push({ metadataid: 32, STATNAME_ST: "BMP K4", NAME_PS: "OMBMPK4", STATIONTYPE_ST: "Normal", COMPT_DS: "CW" }, { metadataid: 32, STATNAME_ST: "BMP K4", NAME_PS: "BMP K4", STATIONTYPE_ST: "Normal", COMPT_DS: "CS" });
+  const { client } = clientOn(tables);
+  const both = await findStations(client, { name: "BMP K4" });
+  assert.deepEqual(both.status === "ok" ? both.stations : [], [{ name: "BMP K4", projectStations: ["BMP K4", "OMBMPK4"], compartments: ["CS", "CW"], stationTypes: ["Normal"], regions: ["Ostsee"], institutes: ["BSH", "IOW"] }]);
+  assert.match(both.status === "ok" ? both.notes.join(" ") : "", /1 station is listed under several project stations/);
+  const bsh = await findStations(client, { name: "BMP K4", institute: "BSH" });
+  assert.deepEqual(bsh.status === "ok" ? bsh.stations : [], [{ name: "BMP K4", projectStations: ["BMP K4"], compartments: ["CS"], stationTypes: ["Normal"], regions: ["Ostsee"], institutes: ["BSH"] }], "only its rows under a BSH project station");
 });
 
 test("the conflict note counts project-station names, not the stations under them", async () => {

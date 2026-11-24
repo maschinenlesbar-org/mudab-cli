@@ -308,10 +308,11 @@ export interface FindStationsInput {
   maxPages?: number | undefined;
 }
 
-/** A measurement station: one name, with every compartment and type its rows give, and its project station's regions and institutes. */
+/** A measurement station: one name, with every compartment, type and project station its rows give, and those project stations' regions and institutes. */
 export interface MeasurementStation {
   name: string;
-  projectStation?: string;
+  /** The project stations its rows name (NAME_PS): one, or several when its rows hang under several. */
+  projectStations: string[];
   compartments: string[];
   stationTypes: string[];
   regions: string[];
@@ -485,8 +486,9 @@ export async function findStations(client: MudabClient, input: FindStationsInput
   const stations = await readTable<Messstation>(client, "stations", maxPages);
   if (!stations.complete) notes.push(partNote("stations", maxPages));
   const byName = new Map<string, MeasurementStation>();
+  // The stations with a row whose project station is in PROJECTSTATION_SMALL.
+  const joined = new Set<string>();
   let rows = 0;
-  let unjoined = 0;
   for (const r of stations.rows) {
     if (compartment !== undefined && r.COMPT_DS !== compartment) continue;
     if (stationType !== undefined && fold(r.STATIONTYPE_ST ?? "") !== fold(stationType)) continue;
@@ -496,18 +498,28 @@ export async function findStations(client: MudabClient, input: FindStationsInput
     const key = r.STATNAME_ST ?? "";
     let entry = byName.get(key);
     if (entry === undefined) {
-      if (project === undefined) unjoined += 1;
-      entry = { name: key, ...(r.NAME_PS === undefined ? {} : { projectStation: r.NAME_PS }), compartments: [], stationTypes: [], regions: project?.regions ?? [], institutes: project?.institutes ?? [] };
+      entry = { name: key, projectStations: [], compartments: [], stationTypes: [], regions: [], institutes: [] };
       byName.set(key, entry);
+    }
+    // A station's rows can hang under several project stations (BMP K4: OMBMPK4 of the IOW, BMP K4
+    // of the BSH): each is listed, with its regions and institutes.
+    if (r.NAME_PS != null && !entry.projectStations.includes(r.NAME_PS)) entry.projectStations = uniq([...entry.projectStations, r.NAME_PS]);
+    if (project !== undefined) {
+      joined.add(key);
+      entry.regions = uniq([...entry.regions, ...project.regions]);
+      entry.institutes = uniq([...entry.institutes, ...project.institutes]);
     }
     entry.compartments = uniq([...entry.compartments, r.COMPT_DS]);
     entry.stationTypes = uniq([...entry.stationTypes, r.STATIONTYPE_ST]);
     rows += 1;
   }
   const list = [...byName.values()];
-  conflictNote(list.map((s) => byProject.get(s.projectStation ?? "")).filter((p): p is ProjectStationEntry => p !== undefined));
+  conflictNote(list.flatMap((s) => s.projectStations.map((p) => byProject.get(p))).filter((p): p is ProjectStationEntry => p !== undefined));
+  const unjoined = list.filter((s) => !joined.has(s.name)).length;
   if (unjoined > 0 && region === undefined && institute === undefined) notes.push(`${unjoined} of these stations have no project station in PROJECTSTATION_SMALL, so no region or institute.`);
-  notes.push("The table repeats rows and lists a station once per compartment: total counts station names, rows the table rows. Region and institute come from the station's project station (projectStation).");
+  const several = list.filter((s) => s.projectStations.length > 1).length;
+  if (several > 0) notes.push(`${several} ${several === 1 ? "station is" : "stations are"} listed under several project stations (projectStations): its regions and institutes are those of all of them; report each.`);
+  notes.push("The table repeats rows and lists a station once per compartment: total counts station names, rows the table rows. Region and institute come from the station's project stations (projectStations).");
   if (stationType !== undefined && list.length === 0) notes.push(`Station types in the table: ${uniq(stations.rows.map((r) => r.STATIONTYPE_ST)).join(", ")}.`);
   return done(list, rows, "measurement station");
 }
