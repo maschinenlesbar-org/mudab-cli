@@ -442,8 +442,9 @@ export async function findStations(client: MudabClient, input: FindStationsInput
   const projectMatches = (p: ProjectStationEntry | undefined): boolean =>
     (region === undefined || (p?.regions.includes(region) ?? false)) && (institute === undefined || (p?.institutes.some((i) => i.toUpperCase() === institute) ?? false));
   const conflictNote = (list: ProjectStationEntry[]): void => {
-    const conflicting = list.filter((p) => p.regions.length > 1 || p.institutes.length > 1).length;
-    if (conflicting > 0) notes.push(`${conflicting} project-station names carry several regions or institutes in the data (for example L1: BSH/Nordsee and IOW/Ostsee): every one is listed; report each, never pick one.`);
+    // Each project-station name once: several stations under one name are one conflict.
+    const conflicting = new Set(list.filter((p) => p.regions.length > 1 || p.institutes.length > 1).map((p) => p.name)).size;
+    if (conflicting > 0) notes.push(`${conflicting} project-station ${conflicting === 1 ? "name carries" : "names carry"} several regions or institutes in the data (for example L1: BSH/Nordsee and IOW/Ostsee): every one is listed; report each, never pick one.`);
   };
 
   if (kind === "project") {

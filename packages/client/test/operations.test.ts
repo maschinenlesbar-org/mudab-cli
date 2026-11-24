@@ -59,7 +59,7 @@ test("region and institute come from the project station; a name with several is
   if (north.status !== "ok") return;
   assert.deepEqual(names(north.stations), ["L1_(1)", "WB1"], "L1 is BSH/Nordsee too, so its station is in the North Sea");
   assert.deepEqual((north.stations[0] as { regions: string[]; institutes: string[] }).regions, ["Nordsee", "Ostsee"]);
-  assert.match(north.notes.join(" "), /carry several regions or institutes .*never pick one/);
+  assert.match(north.notes.join(" "), /carr(?:y|ies) several regions or institutes .*never pick one/);
   const project = await findStations(client, { kind: "project", institute: "bsh" });
   assert.equal(project.status, "ok");
   if (project.status !== "ok") return;
@@ -68,6 +68,17 @@ test("region and institute come from the project station; a name with several is
   assert.equal(project.rows, 4);
   const baltic = await findStations(client, { kind: "project", region: "Ostsee", name: "darss" });
   assert.deepEqual(baltic.status === "ok" ? names(baltic.stations) : [], ["Darss Sill"]);
+});
+
+test("the conflict note counts project-station names, not the stations under them", async () => {
+  const tables = sampleTables();
+  tables.stations.push({ metadataid: 32, STATNAME_ST: "L1_(2)", NAME_PS: "L1", STATIONTYPE_ST: "Normal", COMPT_DS: "CW" }, { metadataid: 32, STATNAME_ST: "L1_(3)", NAME_PS: "L1", STATIONTYPE_ST: "Normal", COMPT_DS: "CW" });
+  const { client } = clientOn(tables);
+  const l1 = await findStations(client, { name: "L1" });
+  assert.equal(l1.status === "ok" && l1.total, 3);
+  assert.match(l1.status === "ok" ? l1.notes.join(" ") : "", /^1 project-station name carries several regions or institutes/);
+  const all = await findStations(client, {});
+  assert.match(all.status === "ok" ? all.notes.join(" ") : "", /^1 project-station name carries/, "L1 is the only name with a conflict");
 });
 
 test("filters of another kind, an unknown region or compartment are refused before any request", async () => {
