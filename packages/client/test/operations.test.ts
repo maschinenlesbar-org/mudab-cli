@@ -81,6 +81,23 @@ test("the conflict note counts project-station names, not the stations under the
   assert.match(all.status === "ok" ? all.notes.join(" ") : "", /^1 project-station name carries/, "L1 is the only name with a conflict");
 });
 
+test("a name, group, river or parameter of punctuation only is refused before any request: it would match everything", async () => {
+  const { client, log } = clientOn();
+  for (const name of ["-", ".", "*", "()", "_"]) {
+    await assert.rejects(findStations(client, { name }), /Invalid name: .* has no letter or digit/);
+    await assert.rejects(findStations(client, { kind: "plc", name }), /Invalid name/);
+    await assert.rejects(findStations(client, { kind: "project", name }), /Invalid name/);
+  }
+  await assert.rejects(findStations(client, { stationType: "-" }), /Invalid stationType/);
+  await assert.rejects(findParameters(client, { name: "*" }), /Invalid name/);
+  await assert.rejects(findParameters(client, { group: "-" }), /Invalid group/);
+  await assert.rejects(findParameters(client, { name: "*", plc: true }), /Invalid name/);
+  await assert.rejects(getMeasurements(client, { station: "-" }), /Invalid station/);
+  await assert.rejects(getMeasurements(client, { parameter: "?" }), /Invalid parameter/);
+  await assert.rejects(getRiverLoads(client, { river: "-" }), /Invalid river/);
+  assert.equal(log.requests.length, 0);
+});
+
 test("filters of another kind, an unknown region or compartment are refused before any request", async () => {
   const { client, log } = clientOn();
   await assert.rejects(findStations(client, { kind: "project", compartment: "wasser" }), /Invalid compartment: compartment and stationType apply to measurement stations/);

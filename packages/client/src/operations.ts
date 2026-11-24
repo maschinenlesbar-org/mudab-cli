@@ -140,6 +140,19 @@ function textInput(field: string, value: unknown): string | undefined {
   return normalizeToken(assertValid(field, value as string, tokenProblem));
 }
 
+/**
+ * A text matched by its letters and digits (`fold`), checked like `textInput`: one without any (only
+ * punctuation, "-", "()") folds to nothing, which every name contains, so it is refused rather
+ * than answered as if it had filtered.
+ */
+function matchInput(field: string, value: unknown): string | undefined {
+  const text = textInput(field, value);
+  if (text !== undefined && fold(text) === "") {
+    throw new MudabValidationError(`Invalid ${field}: ${JSON.stringify(cutForMessage(text))} has no letter or digit; names are matched on their letters and digits, so it would match everything.`);
+  }
+  return text;
+}
+
 /** A whole number in [min, max], or the fallback. */
 function intInput(field: string, value: unknown, min: number, max: number, fallback: number): number {
   if (value === undefined) return fallback;
@@ -349,11 +362,11 @@ export async function findStations(client: MudabClient, input: FindStationsInput
   if (!(STATION_KINDS as readonly string[]).includes(kind)) {
     throw new MudabValidationError(`Invalid kind: expected one of ${STATION_KINDS.join(", ")}, got ${JSON.stringify(cutForMessage(String(kind)))}.`);
   }
-  const name = textInput("name", input.name);
+  const name = matchInput("name", input.name);
   const region = choose("region", textInput("region", input.region), REGIONS, REGION_CHOICES);
   const institute = textInput("institute", input.institute)?.toUpperCase();
   const compartment = input.compartment === undefined ? undefined : resolveCompartment(input.compartment);
-  const stationType = textInput("stationType", input.stationType);
+  const stationType = matchInput("stationType", input.stationType);
   const land = choose("land", textInput("land", input.land), LANDS, LAND_CHOICES);
   const monitoring = plcKind(input.monitoring);
   const offset = intInput("offset", input.offset, 0, 1_000_000, 0);
@@ -564,8 +577,8 @@ const NO_SUBSTANCE_VALUES =
  * parameters of the HELCOM PLC stations, with how many stations and values each has.
  */
 export async function findParameters(client: MudabClient, input: FindParametersInput = {}): Promise<ParameterSearch> {
-  const name = textInput("name", input.name);
-  const group = textInput("group", input.group);
+  const name = matchInput("name", input.name);
+  const group = matchInput("group", input.group);
   const compartment = input.compartment === undefined ? undefined : resolveCompartment(input.compartment);
   const plc = input.plc === true;
   if (input.plc !== undefined && typeof input.plc !== "boolean") throw new MudabValidationError("Invalid plc: expected true or false.");
@@ -831,8 +844,8 @@ function resolveMeasurementParameter(value: string, codes: string[]): { code: st
  * kept for {@link MEASUREMENTS_CACHE_MS} per client.
  */
 export async function getMeasurements(client: MudabClient, input: GetMeasurementsInput = {}): Promise<MeasurementsAnswer> {
-  const station = textInput("station", input.station);
-  const parameter = textInput("parameter", input.parameter);
+  const station = matchInput("station", input.station);
+  const parameter = matchInput("parameter", input.parameter);
   const from = dayInput("from", input.from);
   const to = dayInput("to", input.to);
   if (from !== undefined && to !== undefined && from > to) throw new MudabValidationError("Invalid from and to: from is after to.");
@@ -1077,8 +1090,8 @@ export type LoadsAnswer =
  * never added together; a last year with far fewer rows than the one before is said to be incomplete.
  */
 export async function getRiverLoads(client: MudabClient, input: GetRiverLoadsInput = {}): Promise<LoadsAnswer> {
-  const parameterText = textInput("parameter", input.parameter);
-  const river = textInput("river", input.river);
+  const parameterText = matchInput("parameter", input.parameter);
+  const river = matchInput("river", input.river);
   const land = choose("land", textInput("land", input.land), LANDS, LAND_CHOICES);
   const year = input.year === undefined ? undefined : intInput("year", input.year, 1900, 2100, 0);
   const fromYear = year ?? (input.fromYear === undefined ? undefined : intInput("fromYear", input.fromYear, 1900, 2100, 0));
