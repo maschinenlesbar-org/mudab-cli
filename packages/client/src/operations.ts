@@ -391,7 +391,8 @@ export async function findStations(client: MudabClient, input: FindStationsInput
     if (!read.complete) notes.push(partNote("plcStations", maxPages));
     const types = monitoring === undefined ? undefined : typesOf(monitoring);
     const byCode = new Map<string, PlcStationEntry>();
-    let rows = 0;
+    // The rows per station, so `rows` counts those of the stations answered (after the Land filter).
+    const rowsOf = new Map<string, number>();
     let unknownLand = 0;
     for (const r of read.rows) {
       if (types !== undefined && !types.includes(r.MON_TYPE ?? "")) continue;
@@ -413,7 +414,7 @@ export async function findStations(client: MudabClient, input: FindStationsInput
           lon: r.ST_LON ?? null,
         });
       }
-      rows += 1;
+      rowsOf.set(code, (rowsOf.get(code) ?? 0) + 1);
     }
     let stations = [...byCode.values()];
     if (land !== undefined) {
@@ -425,7 +426,7 @@ export async function findStations(client: MudabClient, input: FindStationsInput
     if (noCoordinates > 0) notes.push(`${noCoordinates} stations have no coordinates (lat/lon null): leave them off a map and say so.`);
     if (stations.some((s) => s.monType === "UNMONITORED")) notes.push("WEBDELAND and BAPDELAND are pseudo-stations for the unmonitored German land areas draining to the Western Baltic and the Baltic Proper (coordinates 0/0), not places.");
     notes.push("PLC stations are not all rivers: monitoring says what each is (river load, flow gauge, municipal treatment plant, unmonitored area). The table repeats stations: each code is listed once.");
-    return done(stations, rows, "HELCOM PLC station");
+    return done(stations, stations.reduce((sum, s) => sum + (rowsOf.get(s.code) ?? 0), 0), "HELCOM PLC station");
   }
 
   const projects = await readTable<ProjectStation>(client, "projectStations", maxPages);

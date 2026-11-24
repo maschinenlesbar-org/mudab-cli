@@ -108,6 +108,9 @@ test("PLC stations: one entry per code, a Land from any of its rows, rivers by n
   if (sh.status !== "ok") return;
   assert.deepEqual(names(sh.stations).sort(), ["AN DER KALTENHÖFERSTRASSE", "MOISLING", "ZKW LÜBECK"]);
   assert.equal(sh.total, 3, "ZKW LÜBECK is listed twice in the table");
+  assert.equal(sh.rows, 6, "the rows of these three stations (SCHWARTAU's under XX too), not the whole table's 11");
+  const mv = await findStations(client, { kind: "plc", land: "MV" });
+  assert.equal(mv.status === "ok" && mv.rows, 4);
   const river = await findStations(client, { kind: "plc", name: "warnow" });
   assert.deepEqual(river.status === "ok" ? river.stations : [], [{ code: "CDE0017", name: "ROSTOCK", river: "WARNOW", monitoring: "monitored river load", monType: "MON_RIVER_LOAD", lands: ["MV"], lat: 54.0833, lon: 12.15 }]);
   const plants = await findStations(client, { kind: "plc", monitoring: "treatmentPlant" });
