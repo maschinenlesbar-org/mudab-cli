@@ -245,6 +245,14 @@ test("the measurement table is read once and kept for a while per client, then r
   assert.deepEqual(log.requests.at(-1), { table: "MV_STATION_MSMNT", from: 0, count: 30_000 });
 });
 
+test("two calls at once share one read of the measurement table", async () => {
+  const { client, log } = clientOn();
+  const [a, b] = await Promise.all([getMeasurements(client, { now: () => 0 }), getMeasurements(client, { parameter: "SurTemp", now: () => 0 })]);
+  assert.equal(a.status, "ok");
+  assert.equal(b.status, "ok");
+  assert.equal(log.of("MV_STATION_MSMNT"), 1, "one read for both");
+});
+
 test("the unit is the method id's token before the institute, or none", () => {
   assert.equal(unitOf("APSurTemp THRNFNON degC IFAG"), "degC");
   assert.equal(unitOf("2D 25 25 APWINDD 151 NFNON _Grad BSHG"), "_Grad");

@@ -778,6 +778,9 @@ interface MeasurementTable {
 
 const tables = new WeakMap<MudabClient, { at: number; table: MeasurementTable }>();
 
+/** The read of the measurement table under way per client, which a second call joins. */
+const reading = new WeakMap<MudabClient, Promise<MeasurementTable>>();
+
 /**
  * The unit in a row's method id (PARAMETERID_PM, "APSurTemp THRNFNON degC IFAG": the token before
  * the institute), or "" when it names none ("APAIRTEMP THRNFNON LUNG").
@@ -788,10 +791,34 @@ export function unitOf(parameterId: string | undefined): string {
   return /NON$/.test(unit) || /^AP/.test(unit) ? "" : unit;
 }
 
-/** The measurement table, read in pages (or from the client's cache when younger than MEASUREMENTS_CACHE_MS). */
+/**
+ * The measurement table: from the client's cache when younger than MEASUREMENTS_CACHE_MS, else
+ * read in pages. Calls at once share one read (a model's parallel calls would each download the
+ * ~42 MB); when that read fails for the call that started it (cancelled, at its deadline), a call
+ * that joined it reads on its own.
+ */
 async function measurementTable(client: MudabClient, maxPages: number, now: () => number): Promise<MeasurementTable> {
-  const cached = tables.get(client);
-  if (cached !== undefined && now() - cached.at < MEASUREMENTS_CACHE_MS) return cached.table;
+  for (;;) {
+    const cached = tables.get(client);
+    if (cached !== undefined && now() - cached.at < MEASUREMENTS_CACHE_MS) return cached.table;
+    const pending = reading.get(client);
+    if (pending !== undefined) {
+      try {
+        return await pending;
+      } catch {
+        continue;
+      }
+    }
+    const read = readMeasurementTable(client, maxPages, now).finally(() => {
+      if (reading.get(client) === read) reading.delete(client);
+    });
+    reading.set(client, read);
+    return await read;
+  }
+}
+
+/** One read of the measurement table, in pages, into the client's cache. */
+async function readMeasurementTable(client: MudabClient, maxPages: number, now: () => number): Promise<MeasurementTable> {
   const table: MeasurementTable = { stations: [], codes: [], units: [], s: [], c: [], u: [], d: [], t: [], v: [], complete: false, skipped: 0, repeated: 0, rows: 0 };
   const index = { s: new Map<string, number>(), c: new Map<string, number>(), u: new Map<string, number>() };
   const idx = (map: Map<string, number>, list: string[], key: string): number => {
