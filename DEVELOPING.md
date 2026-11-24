@@ -444,6 +444,7 @@ for an app that has one).
 | `src/mcp/limiter.ts` | One per process around the upstream transport: 2 in flight, 120 a minute, pause on 429, a bounded queue. The method doesn't matter to it: MUDAB's requests are POSTs. |
 | `src/mcp/http.ts` | node:http adapter for the SDK's `createMcpHandler`: POST /mcp, /healthz, Host and Origin checks (the SDK does neither), 1 MiB body, 8 requests at once, timeouts. |
 | `src/mcp/config.ts`, `run.ts`, `index.ts` | Options (`node:util` parseArgs), argv -> exit code, the bin (console into log records, SIGINT/SIGTERM, stdin's end). |
+| `src/mcp/credentials.ts`, `auth.ts` | The credentials hook (api.ts's `findCredentials`; this API needs none) and the secrets redacted from results and records; the HTTP bearer token of `--auth-token-file`. |
 
 The protocol is the SDK's: `@modelcontextprotocol/server` 2.4.0, bundled with its core and zod
 (prepack). It serves the 2026-07-28 revision and the 2025 handshake (2025-11-25, 2025-06-18)
@@ -470,23 +471,25 @@ minutes (about 10 MB for the whole table in columns).
 the same in every repository with an MCP server: a fix lands there first and comes here with
 `npm run sync-kit -- ../mudab-cli` (run in create-cli-template; `--check` lists the drift).
 
-Tests (`apps/mcp/test`) run in-process over the SDK's InMemoryTransport with raw JSON-RPC (the
-kit's `harness.ts`). The rules every server follows are the shared conformance tests
-`conformance-m1-…` to `conformance-m10-…` (protocol and tool rules, HTTP, Host and Origin,
-stdio with the built bin, config, limiter, result shaping, drain, call errors, MCP.md), each with
-an adapter block naming this repo's calls and mock answers; `tools.test.ts` holds this server's
-own (the five tools, the traps). The mock API is the client's `test/tables.ts` (`mudabApi`,
-`sampleTables`, `apiLog`): every endpoint answers POST only (anything else 405), honours the
-body's range and nothing else, as the live server does, and wraps the rows under the live key;
-the rows are live rows of 2026-11-19, a few per trap (a station in two compartments, L1's two
-regions, mercury in three compartment lists but under biota in the combined one, WAVHT in m and
-on a scale, AIRTEMP without a unit, PLC nulls, a 2014 kg/a value, a short last year, a station
-under XX and SH, the unmonitored area). The stdio tests start the built bin (30 s each).
-`tools/interop/` checks the built server against the official client 2.4.0 (stdio and HTTP;
-legacy, auto and pinned 2026-07-28) in ci.yml's `interop` job; it has its own lockfile and is
-never installed by the workspace, release or publish runs; the calls it makes and the mock's
-answers (live rows) are in `tools/interop/interop.json`. Both mocks answer by path, whatever the
-method, so MUDAB's POSTs reach them.
+Tests (`apps/mcp/test`) run in-process over the SDK's InMemoryTransport with raw JSON-RPC (the kit's
+`harness.ts`). The rules every server follows are the shared conformance tests `conformance-m1-…` to
+`conformance-m12-…` (protocol and tool rules, HTTP, Host and Origin, stdio with the built bin,
+config, limiter, result shaping, drain, call errors, MCP.md, credentials, the HTTP bearer token of
+`--auth-token-file`: `auth.ts`, required where `api.ts` exports `HTTP_NEEDS_AUTH_TOKEN = true`, for
+an API called with a personal account), each with an adapter block naming this repo's calls and mock
+answers (this API needs no credentials, so the credentials tests are skipped); `tools.test.ts` holds
+this server's own (the five tools, the traps). The mock API is the client's `test/tables.ts`
+(`mudabApi`, `sampleTables`, `apiLog`): every endpoint answers POST only (anything else 405),
+honours the body's range and nothing else, as the live server does, and wraps the rows under the
+live key; the rows are live rows of 2026-11-19, a few per trap (a station in two compartments, L1's
+two regions, mercury in three compartment lists but under biota in the combined one, WAVHT in m and
+on a scale, AIRTEMP without a unit, PLC nulls, a 2014 kg/a value, a short last year, a station under
+XX and SH, the unmonitored area). The stdio tests start the built bin (30 s each). `tools/interop/`
+checks the built server against the official client 2.4.0 (stdio and HTTP; legacy, auto and pinned
+2026-07-28) in ci.yml's `interop` job; it has its own lockfile and is never installed by the
+workspace, release or publish runs; the calls it makes and the mock's answers (live rows) are in
+`tools/interop/interop.json`. Both mocks answer by path, whatever the method, so MUDAB's POSTs reach
+them.
 
 ## Container image
 
