@@ -304,6 +304,10 @@ function page<T>(items: T[], offset: number, limit: number): { items: T[]; nextO
   return offset + limit < items.length ? { items: items_, nextOffset: offset + limit } : { items: items_ };
 }
 
+/** The reason of an empty answer whose offset is past the end of `total` entries. */
+const pastEnd = (offset: number, total: number, what: string): string =>
+  `Offset ${offset} is past the end: there are ${total} ${what}; ask again from an offset below ${total} (0 for the first page).`;
+
 /** `n` rounded to at most `digits` decimals. */
 const round = (n: number, digits = 4): number => Math.round(n * 10 ** digits) / 10 ** digits;
 
@@ -473,6 +477,7 @@ export async function findStations(client: MudabClient, input: FindStationsInput
     if (stations.length === 0) return { status: "empty", searched, reason: `No ${what} matches ${describe(searched)}. Drop a filter, or try a shorter part of the name.`, notes };
     // The exact name first, then by name.
     const sorted = [...stations].sort((a, b) => Number(q !== undefined && fold(b.name) === q) - Number(q !== undefined && fold(a.name) === q) || a.name.localeCompare(b.name, "de"));
+    if (offset >= sorted.length) return { status: "empty", searched, reason: pastEnd(offset, sorted.length, "stations"), notes };
     const { items, nextOffset } = page(sorted, offset, limit);
     return { status: "ok", searched, total: stations.length, rows, stations: items as (MeasurementStation | ProjectStationEntry | PlcStationEntry)[], ...(nextOffset === undefined ? {} : { nextOffset }), notes };
   };
@@ -713,6 +718,7 @@ export async function findParameters(client: MudabClient, input: FindParametersI
         Number("deprecated" in a) - Number("deprecated" in b) ||
         a.code.localeCompare(b.code),
     );
+    if (offset >= sorted.length) return { status: "empty", searched, reason: pastEnd(offset, sorted.length, "parameters"), notes };
     const { items, nextOffset } = page(sorted, offset, limit);
     return { status: "ok", searched, total: list.length, parameters: items, ...(nextOffset === undefined ? {} : { nextOffset }), notes };
   };
@@ -1110,6 +1116,7 @@ export async function getMeasurements(client: MudabClient, input: GetMeasurement
       };
     });
     unitNote(finished);
+    if (offset >= values.length) return { status: "empty", searched, reason: pastEnd(offset, values.length, "values"), notes };
     const { items, nextOffset } = page(values, offset, limit);
     return { status: "ok", searched, station: name, series: finished.sort((a, b) => a.parameter.localeCompare(b.parameter)), total: values.length, values: items, ...(nextOffset === undefined ? {} : { nextOffset }), notes };
   }
@@ -1118,6 +1125,7 @@ export async function getMeasurements(client: MudabClient, input: GetMeasurement
     if (finished.length === 0) return { status: "empty", searched, reason: `No station has values of ${codeName}${range}. Widen the dates.`, notes };
     unitNote(finished);
     const sorted = finished.sort((a, b) => b.count - a.count || a.station.localeCompare(b.station));
+    if (offset >= sorted.length) return { status: "empty", searched, reason: pastEnd(offset, sorted.length, "series"), notes };
     const { items, nextOffset } = page(sorted, offset, limit);
     return { status: "ok", searched, parameter: codeName, total: sorted.length, stations: items, ...(nextOffset === undefined ? {} : { nextOffset }), notes };
   }
@@ -1393,11 +1401,13 @@ export async function getRiverLoads(client: MudabClient, input: GetRiverLoadsInp
     list.sort(by === "year" ? (a, b) => b.group.localeCompare(a.group) || (a.unit ?? "").localeCompare(b.unit ?? "") : (a, b) => valueOf(b) - valueOf(a));
     if (spansYears) notes.push("The answer spans several years: a group's total is the mean of its yearly totals (meanPerYear, in the unit per year) over the years it has values (years, fromYear to toYear), never their sum; a group with one year gives that year's sum. Ask with year for one year's totals.");
     if (by === "year" && kind === "river") notes.push("A year's total adds the monitored rivers that reported that year; the number of rivers changes between years (count).");
+    if (offset >= list.length) return { status: "empty", searched, reason: pastEnd(offset, list.length, "totals"), notes };
     const { items, nextOffset } = page(list, offset, limit);
     return { status: "ok", searched, total: list.length, totals: items, ...stations, ...(nextOffset === undefined ? {} : { nextOffset }), notes };
   }
   rows.sort(sort === "year" ? (a, b) => b.year.localeCompare(a.year) || b.value - a.value : (a, b) => b.value - a.value || b.year.localeCompare(a.year));
   if (parameter === undefined && sort === "value") notes.push("Rows of different parameters are ranked together: give a parameter to rank one.");
+  if (offset >= rows.length) return { status: "empty", searched, reason: pastEnd(offset, rows.length, "rows"), notes };
   const { items, nextOffset } = page(rows, offset, limit);
   return { status: "ok", searched, total: rows.length, rows: items, ...stations, ...(nextOffset === undefined ? {} : { nextOffset }), notes };
 }
@@ -1476,6 +1486,7 @@ export async function listRows(client: MudabClient, input: ListRowsInput): Promi
   }
   const found = exact.total > 0 ? exact : other;
   if (found.total === 0) return { status: "empty", searched, reason: `No row of ${TABLE_PATHS[table]} has ${field} equal to ${JSON.stringify(value)} (any case). Check the value's spelling in a page of rows (without field).`, notes };
+  if (offset >= found.total) return { status: "empty", searched, reason: pastEnd(offset, found.total, "rows"), notes };
   if (found === other && other.spellings.size > 1) {
     notes.push(`No row has it exactly; these ${other.spellings.size} spellings equal it in another case: ${[...other.spellings].map((t) => JSON.stringify(t)).join(", ")}. They may be different things (two stations): ask with one exactly to get its rows only.`);
   }

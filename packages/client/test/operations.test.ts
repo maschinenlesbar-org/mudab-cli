@@ -452,6 +452,24 @@ test("a server that ignores the range is an error a caller of the use cases can 
   await assert.rejects(client.plcStations({ range: { from: 0, count: 1 } }), /fetch the whole table \(\{ all: true \}; --all on the CLI\)/, "the client's own advice stays for its callers");
 });
 
+test("an offset past the end is an empty answer saying how many there are, never an ok with an empty list", async () => {
+  const { client } = clientOn();
+  const calls: [string, Promise<{ status: string; reason?: string }>][] = [
+    ["stations", findStations(client, { kind: "plc", offset: 500 })],
+    ["parameters", findParameters(client, { offset: 500 })],
+    ["values", getMeasurements(client, { station: "OMMVZBA15", offset: 500, now: () => 0 })],
+    ["series", getMeasurements(client, { parameter: "WAVHT", offset: 500, now: () => 0 })],
+    ["rows", getRiverLoads(client, { parameter: "Ntot", offset: 500 })],
+    ["totals", getRiverLoads(client, { parameter: "Ntot", by: "year", offset: 500 })],
+    ["rows", listRows(client, { table: "projectStations", field: "NAME_PS", value: "L1", offset: 500 })],
+  ];
+  for (const [what, call] of calls) {
+    const answer = await call;
+    assert.equal(answer.status, "empty", what);
+    assert.match(answer.reason ?? "", new RegExp(`Offset 500 is past the end: there are \\d+ ${what}`), what);
+  }
+});
+
 test("raw rows: a page is one ranged request; a field selects across the whole table; an unknown field names the columns", async () => {
   const { client, log } = clientOn();
   const page = await listRows(client, { table: "projectStations", offset: 2, limit: 2 });

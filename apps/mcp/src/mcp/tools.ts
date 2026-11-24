@@ -72,7 +72,7 @@ const input = (properties: Record<string, JsonSchema>, required: string[] = []):
 const output = (properties: Record<string, JsonSchema>): JsonSchema => ({
   type: "object",
   properties: {
-    status: { type: "string", enum: ["ok", "ambiguous", "empty"], description: "ok: the answer; ambiguous: several match, ask which one and call again with one of candidates; empty: nothing matched (see reason and searched), a valid answer." },
+    status: { type: "string", enum: ["ok", "ambiguous", "empty"], description: "ok: the answer; ambiguous: several match, ask which one and call again with one of candidates; empty: nothing matched, or offset is past the end (see reason and searched), a valid answer." },
     source: { type: "string" },
     licence: { type: "string" },
     truncated: { type: "boolean", description: "True when the answer holds only part of the list (size cap): continue at nextOffset; or a text cut at its end (it ends in \"…[cut, N characters in all]\")." },
