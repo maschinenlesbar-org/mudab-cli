@@ -77,6 +77,7 @@ export {
   LOAD_GROUPS,
   MEASUREMENT_PARAMETERS,
   MEASUREMENTS_CACHE_MS,
+  PARAMETERS_CACHE_MS,
   PLC_PARAMETERS,
 } from "./operations.js";
 export type {

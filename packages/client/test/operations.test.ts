@@ -10,7 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MudabClient } from "../src/client.js";
 import { MudabParseError, MudabValidationError } from "../src/errors.js";
-import { findParameters, findStations, getMeasurements, getRiverLoads, listRows, readPages, unitOf, MEASUREMENTS_CACHE_MS } from "../src/operations.js";
+import { findParameters, findStations, getMeasurements, getRiverLoads, listRows, readPages, unitOf, MEASUREMENTS_CACHE_MS, PARAMETERS_CACHE_MS } from "../src/operations.js";
 import { makeMockTransport } from "./helpers.js";
 import { apiLog, mudabApi, sampleTables, type Tables } from "./tables.js";
 
@@ -161,11 +161,11 @@ test("a substance's compartments come from every compartment's own list, not the
   ]);
   assert.deepEqual(log.requests.map((r) => r.table), ["MV_PARAMETER", "MV_PARAMETER_WASSER", "MV_PARAMETER_SEDIMENT", "MV_PARAMETER_BIOTA", "MV_PARAMETER_BIOLOGIE"]);
   assert.match(mercury.notes.join(" "), /holds only weather and sea-state observations/);
-  // One compartment: its own list only.
-  const before = log.requests.length;
-  const sediment = await findParameters(client, { name: "Hg", compartment: "sediment" });
+  // One compartment: its own list only (a new client: the lists are kept per client).
+  const { client: fresh, log: freshLog } = clientOn();
+  const sediment = await findParameters(fresh, { name: "Hg", compartment: "sediment" });
   assert.deepEqual(sediment.status === "ok" ? sediment.parameters.map((p) => p.code) : [], ["HG"], "the exact code first");
-  assert.deepEqual(log.requests.slice(before).map((r) => r.table), ["MV_PARAMETER_SEDIMENT"]);
+  assert.deepEqual(freshLog.requests.map((r) => r.table), ["MV_PARAMETER_SEDIMENT"]);
 });
 
 test("parameters by group (null groups never break it), deprecated last, German names answered with the English hint", async () => {
@@ -177,6 +177,21 @@ test("parameters by group (null groups never break it), deprecated last, German 
   const german = await findParameters(client, { name: "Quecksilber" });
   assert.equal(german.status, "empty");
   assert.match(german.status === "empty" ? german.reason : "", /Names are English: try the English name \("mercury"/);
+});
+
+test("the parameter lists are read once and kept for a while per client, then read again", async () => {
+  const { client, log } = clientOn();
+  let now = 1_000;
+  await findParameters(client, { name: "mercury", now: () => now });
+  assert.equal(log.requests.length, 5, "the combined table and the four compartment lists");
+  await findParameters(client, { group: "nutrient", now: () => now });
+  await findParameters(client, { compartment: "CS", now: () => now });
+  await findParameters(client, { plc: true, now: () => now });
+  await findParameters(client, { plc: true, name: "Hg", now: () => now });
+  assert.equal(log.requests.length, 6, "only the PLC list is new");
+  now += PARAMETERS_CACHE_MS;
+  await findParameters(client, { name: "mercury", now: () => now });
+  assert.equal(log.requests.length, 11);
 });
 
 test("PLC parameters: per parameter the stations, the values and the last year", async () => {

@@ -620,6 +620,29 @@ export interface FindParametersInput {
   /** Parameters to list (1-200, default 50). */
   limit?: number | undefined;
   maxPages?: number | undefined;
+  /** The clock of the lists' cache (ms); tests inject one. */
+  now?: (() => number) | undefined;
+}
+
+/**
+ * How long the parameter lists (the combined table, the four compartment lists, the PLC list) are
+ * kept per client: they change rarely, and a search without compartment reads five of them, so a
+ * model asking a few questions would otherwise spend its request budget on the same lists.
+ */
+export const PARAMETERS_CACHE_MS = 15 * 60_000;
+
+const parameterLists = new WeakMap<MudabClient, Map<string, { at: number; read: { rows: unknown[]; complete: boolean } }>>();
+
+/** A parameter list, from the client's cache when younger than PARAMETERS_CACHE_MS, else read. */
+async function parameterList<T>(client: MudabClient, table: "parameters" | "plcParameters", maxPages: number, now: () => number, compartment?: (typeof COMPARTMENT_LISTS)[keyof typeof COMPARTMENT_LISTS]): Promise<{ rows: T[]; complete: boolean }> {
+  const key = `${table}|${compartment ?? ""}|${maxPages}`;
+  const lists = parameterLists.get(client) ?? new Map<string, { at: number; read: { rows: unknown[]; complete: boolean } }>();
+  parameterLists.set(client, lists);
+  const kept = lists.get(key);
+  if (kept !== undefined && now() - kept.at < PARAMETERS_CACHE_MS) return kept.read as { rows: T[]; complete: boolean };
+  const read = await readTable<T>(client, table, maxPages, compartment);
+  lists.set(key, { at: now(), read });
+  return read;
 }
 
 /** A parameter, with every compartment whose list names it. */
@@ -674,6 +697,7 @@ export async function findParameters(client: MudabClient, input: FindParametersI
   const offset = intInput("offset", input.offset, 0, 1_000_000, 0);
   const limit = intInput("limit", input.limit, 1, 200, 50);
   const maxPages = intInput("maxPages", input.maxPages, 1, 100, DEFAULT_MAX_PAGES);
+  const now = input.now ?? Date.now;
   if (plc && (group !== undefined || compartment !== undefined)) {
     throw new MudabValidationError("Invalid group and compartment: they apply to the monitoring parameters, not to the PLC list (plc true).");
   }
@@ -694,7 +718,7 @@ export async function findParameters(client: MudabClient, input: FindParametersI
   };
 
   if (plc) {
-    const read = await readTable<ParameterPLC>(client, "plcParameters", maxPages);
+    const read = await parameterList<ParameterPLC>(client, "plcParameters", maxPages, now);
     if (!read.complete) notes.push(partNote("plcParameters", maxPages));
     const byCode = new Map<string, PlcParameterEntry & { codes: Set<string> }>();
     for (const r of read.rows) {
@@ -720,7 +744,7 @@ export async function findParameters(client: MudabClient, input: FindParametersI
     : [{}];
   const byCode = new Map<string, ParameterEntry>();
   for (const list of lists) {
-    const read = await readTable<Parameter>(client, "parameters", maxPages, list.endpoint);
+    const read = await parameterList<Parameter>(client, "parameters", maxPages, now, list.endpoint);
     if (!read.complete) notes.push(partNote("parameters", maxPages));
     for (const r of read.rows) {
       const code = r.PARAMETER ?? "";
