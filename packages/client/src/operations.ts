@@ -22,7 +22,8 @@
 // call's signal through the transport, so no function takes one.
 
 import type { MudabClient } from "./client.js";
-import { MudabValidationError, cutForMessage } from "./errors.js";
+import { quoteServerText } from "./engine.js";
+import { MudabParseError, MudabValidationError, cutForMessage } from "./errors.js";
 import type { HelcomPLCStation, ListRequest, Messstation, MesswertPLC, Parameter, ParameterPLC, ParameterValue, ProjectStation } from "./types.js";
 import { assertValid, normalizeToken, tokenProblem } from "./validate.js";
 
@@ -104,12 +105,66 @@ export async function readPages<T>(fetch: Fetch<T>, pageRows: number, maxPages: 
   return { rows, pages: maxPages, complete: false };
 }
 
-/** A whole (small) table's rows. */
+/**
+ * The fields the use cases read of each table, by type (null is "no value" and always allowed), and
+ * the ones they can't do without (`key`: present in some row of every page). The client checks the
+ * wrapper and that rows are objects; this checks what the answers are computed from, so a change
+ * of MUDAB's rows (a value sent as text, a renamed field) is an error, never "no value" or "no match".
+ * Columns have one type each (the rows come from database views), and live rows of 2026-11-24 have
+ * these types.
+ */
+const FIELDS: Readonly<Record<TableName, { text: readonly string[]; number: readonly string[]; key: readonly string[] }>> = {
+  stations: { text: ["STATNAME_ST", "NAME_PS", "STATIONTYPE_ST", "COMPT_DS"], number: [], key: ["STATNAME_ST", "NAME_PS", "COMPT_DS"] },
+  projectStations: { text: ["NAME_PS", "REGION", "INSTITUT"], number: ["PROJECTSTATIONID"], key: ["NAME_PS", "REGION", "INSTITUT"] },
+  parameters: { text: ["PARAMETER", "COMPT_DS", "PARAM_NAME", "PARAMGROUP_NAME", "PARAMETERGRUPPE"], number: [], key: ["PARAMETER", "PARAM_NAME"] },
+  measurements: { text: ["STATNAME_ST", "PARAMETERID_PM", "PARAMCODE_PM", "DATE_STM", "TIME_STM"], number: ["VALUE_MS"], key: ["STATNAME_ST", "PARAMCODE_PM", "DATE_STM", "VALUE_MS"] },
+  plcStations: { text: ["STATION_NAME", "STATION_CODE", "LAND_CD", "SUBCM_NAME", "MON_TYPE"], number: ["ST_LAT", "ST_LON"], key: ["STATION_NAME", "STATION_CODE", "LAND_CD", "MON_TYPE"] },
+  plcParameters: { text: ["PARAMETER", "PARAMETERGRUPPE", "STATION_CODE", "LETZTE_MESSUNG"], number: ["ANZ_MESSWERTE"], key: ["PARAMETER", "STATION_CODE"] },
+  plcMeasurements: { text: ["NAME", "STATION_CODE", "STATION_NAME", "PARAM_TYPE", "PERIOD_NAME", "LAND_CD", "SUBCM_NAME", "MON_TYPE", "VAL_UNIT"], number: ["VALUE"], key: ["NAME", "STATION_CODE", "PERIOD_NAME", "MON_TYPE", "VALUE"] },
+};
+
+/** A value as an error names it: its type, and a short quote of a text or number. */
+function shapeOf(value: unknown): string {
+  if (typeof value === "string") return `the text ${quoteServerText(cutForMessage(value))}`;
+  if (typeof value === "number" || typeof value === "boolean") return `the ${typeof value} ${String(value)}`;
+  return Array.isArray(value) ? "an array" : `an ${typeof value}`;
+}
+
+const CHANGED = "MUDAB's rows have changed shape, so this answer can't be computed from them (this is no empty result); try again later, and report it if it stays.";
+
+/** Throws a MudabParseError when a page's rows aren't of the shape the use cases read ({@link FIELDS}). */
+function checkRows(table: TableName, path: string, rows: readonly Record<string, unknown>[]): void {
+  const fields = FIELDS[table];
+  for (const row of rows) {
+    for (const [names, type, wanted] of [[fields.text, "string", "a text"], [fields.number, "number", "a number"]] as const) {
+      for (const name of names) {
+        const value = row[name];
+        if (value != null && typeof value !== type) throw new MudabParseError(`${path}: field ${name} is ${shapeOf(value)}, where ${wanted} was; ${CHANGED}`);
+      }
+    }
+  }
+  if (rows.length === 0) return;
+  for (const name of fields.key) {
+    if (!rows.some((row) => Object.hasOwn(row, name))) throw new MudabParseError(`${path}: no row of the page has the field ${name}; ${CHANGED}`);
+  }
+}
+
+/** The error for a whole table that answered no rows: these tables are never empty. */
+const noRows = (path: string): MudabParseError =>
+  new MudabParseError(`${path} answered no rows at all, which this table never does: the API may have changed or failed, so this is no empty result; try again later.`);
+
+/** The endpoint of a table (a compartment's own parameter list has its own). */
+const pathOf = (table: TableName, compartment?: string): string => (compartment === undefined ? TABLE_PATHS[table] : `${TABLE_PATHS[table]}_${compartment.toUpperCase()}`);
+
+/** A whole (small) table's rows, checked ({@link checkRows}); a table without any row is an error. */
 async function readTable<T>(client: MudabClient, table: TableName, maxPages: number, compartment?: (typeof COMPARTMENT_LISTS)[keyof typeof COMPARTMENT_LISTS]): Promise<{ rows: T[]; complete: boolean }> {
   const rows: T[] = [];
-  const read = await readPages(fetcher(client, table, compartment) as Fetch<T>, PAGE_ROWS[table], maxPages, (page) => {
-    for (const row of page) rows.push(row);
+  const path = pathOf(table, compartment);
+  const read = await readPages(fetcher(client, table, compartment), PAGE_ROWS[table], maxPages, (page) => {
+    checkRows(table, path, page);
+    for (const row of page) rows.push(row as T);
   });
+  if (read.rows === 0) throw noRows(path);
   return { rows, complete: read.complete };
 }
 
@@ -751,6 +806,7 @@ async function measurementTable(client: MudabClient, maxPages: number, now: () =
   // 2026-11-19): a row seen before, field for field, is counted once.
   const seen = new Set<string>();
   const read = await readPages<ParameterValue>((req) => client.measurements(req), PAGE_ROWS.measurements, maxPages, (rows) => {
+    checkRows("measurements", TABLE_PATHS.measurements, rows as Record<string, unknown>[]);
     for (const r of rows) {
       table.rows += 1;
       const key = `${r.STATNAME_ST}\u0000${r.PARAMETERID_PM}\u0000${r.PARAMCODE_PM}\u0000${r.DATE_STM}\u0000${r.TIME_STM}\u0000${r.VALUE_MS}`;
@@ -771,6 +827,7 @@ async function measurementTable(client: MudabClient, maxPages: number, now: () =
       table.v.push(r.VALUE_MS);
     }
   });
+  if (read.rows === 0) throw noRows(TABLE_PATHS.measurements);
   table.complete = read.complete;
   tables.set(client, { at: now(), table });
   return table;
@@ -1291,6 +1348,7 @@ export async function listRows(client: MudabClient, input: ListRowsInput): Promi
   const fetch = fetcher(client, table, endpoint);
   if (field === undefined) {
     const rows = await fetch({ range: { from: offset, count: limit } });
+    if (rows.length === 0 && offset === 0) throw noRows(pathOf(table, endpoint));
     if (rows.length === 0) return { status: "empty", searched, reason: `${TABLE_PATHS[table]} has no rows from offset ${offset}: the table is shorter.`, notes };
     return { status: "ok", searched, rows, ...(rows.length === limit ? { nextOffset: offset + limit } : {}), notes };
   }
@@ -1315,6 +1373,7 @@ export async function listRows(client: MudabClient, input: ListRowsInput): Promi
       if (bucket === other && other.spellings.size < 10) other.spellings.add(text);
     }
   });
+  if (read.rows === 0) throw noRows(pathOf(table, endpoint));
   if (!read.complete) notes.push(partNote(table, maxPages));
   if (columns !== undefined && !columns.includes(field)) {
     throw new MudabValidationError(`Invalid field: ${TABLE_PATHS[table]} has no column ${JSON.stringify(cutForMessage(field))}; its columns are ${columns.join(", ")}.`);

@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MudabClient } from "../src/client.js";
-import { MudabValidationError } from "../src/errors.js";
+import { MudabParseError, MudabValidationError } from "../src/errors.js";
 import { findParameters, findStations, getMeasurements, getRiverLoads, listRows, readPages, unitOf, MEASUREMENTS_CACHE_MS } from "../src/operations.js";
 import { makeMockTransport } from "./helpers.js";
 import { apiLog, mudabApi, sampleTables, type Tables } from "./tables.js";
@@ -349,6 +349,35 @@ test("station names that differ only in case or punctuation: the exact name sele
   assert.match(caseless.status === "ok" ? caseless.notes.join(" ") : "", /No row has it exactly; these 2 spellings equal it in another case: "EIDER V Eider outer", "Eider V Eider outer"/);
   const one = await listRows(client, { table: "measurements", field: "STATNAME_ST", value: "Eider V Eider outer" });
   assert.deepEqual(one.status === "ok" ? one.rows.map((r) => r["STATNAME_ST"]) : [], ["Eider V Eider outer"]);
+});
+
+test("rows of another shape are an error naming the field, never no value or no match; a table answering no rows at all too", async () => {
+  // Rows are replaced, never changed in place: sampleTables shares its station objects between calls.
+  const drift = (change: (t: Tables) => void) => {
+    const tables = sampleTables();
+    change(tables);
+    return clientOn(tables).client;
+  };
+  const strings = drift((t) => { t.plcMeasurements = t.plcMeasurements.map((r) => ({ ...r, VALUE: r.VALUE == null ? null : (String(r.VALUE) as never) })); });
+  await assert.rejects(getRiverLoads(strings, { parameter: "Ntot", year: 2023 }), (err: unknown) => err instanceof MudabParseError && /V_MESSWERTE_PLC: field VALUE is the text "2500\.1", where a number was; MUDAB's rows have changed shape/.test(err.message));
+  const object = drift((t) => { t.plcStations[0] = { ...t.plcStations[0], STATION_NAME: { de: "ANKLAM" } as never }; });
+  await assert.rejects(findStations(object, { kind: "plc", name: "x" }), /V_PLC_STATION: field STATION_NAME is an object, where a text was/);
+  const code = drift((t) => { t.plcStations[1] = { ...t.plcStations[1], STATION_CODE: 7 as never }; });
+  await assert.rejects(findStations(code, { kind: "plc" }), /field STATION_CODE is the number 7, where a text was/);
+  const land = drift((t) => { t.plcStations[1] = { ...t.plcStations[1], LAND_CD: ["MV"] as never }; });
+  await assert.rejects(findStations(land, { kind: "plc" }), /field LAND_CD is an array/);
+  const renamed = drift((t) => { t.measurements = t.measurements.map(({ VALUE_MS, ...r }) => ({ ...r, VALUE: VALUE_MS }) as never); });
+  await assert.rejects(getMeasurements(renamed, { now: () => 0 }), /MV_STATION_MSMNT: no row of the page has the field VALUE_MS/);
+  const emptyPlc = drift((t) => { t.plcStations = []; });
+  await assert.rejects(findStations(emptyPlc, { kind: "plc" }), (err: unknown) => err instanceof MudabParseError && /V_PLC_STATION answered no rows at all/.test(err.message));
+  const emptyValues = drift((t) => { t.measurements = []; });
+  await assert.rejects(getMeasurements(emptyValues, { now: () => 0 }), /MV_STATION_MSMNT answered no rows at all/);
+  const emptyRows = drift((t) => { t.projectStations = []; });
+  await assert.rejects(listRows(emptyRows, { table: "projectStations", field: "NAME_PS", value: "L1" }), /PROJECTSTATION_SMALL answered no rows at all/);
+  await assert.rejects(listRows(emptyRows, { table: "projectStations" }), /PROJECTSTATION_SMALL answered no rows at all/);
+  // A null is "no value", and a field the use case doesn't read may be anything.
+  const nulls = drift((t) => { t.plcStations[0] = { ...t.plcStations[0], ST_LAT: null, metadataid: "x" as never }; });
+  assert.equal((await findStations(nulls, { kind: "plc" })).status, "ok");
 });
 
 test("raw rows: a page is one ranged request; a field selects across the whole table; an unknown field names the columns", async () => {
