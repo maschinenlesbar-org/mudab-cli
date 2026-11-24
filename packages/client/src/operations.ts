@@ -819,6 +819,9 @@ interface MeasurementTable {
   v: number[];
   complete: boolean;
   skipped: number;
+  /** Values whose time isn't four digits (HHMM): kept without a time; the first such time. */
+  oddTimes: number;
+  oddTime?: string;
   /** Rows the table repeats exactly (every field the same), counted once. */
   repeated: number;
   rows: number;
@@ -869,7 +872,7 @@ async function measurementTable(client: MudabClient, maxPages: number, now: () =
     if (read === undefined) {
       read = {
         at: now(),
-        table: { stations: [], codes: [], units: [], s: [], c: [], u: [], d: [], t: [], v: [], complete: false, skipped: 0, repeated: 0, rows: 0 },
+        table: { stations: [], codes: [], units: [], s: [], c: [], u: [], d: [], t: [], v: [], complete: false, skipped: 0, oddTimes: 0, repeated: 0, rows: 0 },
         index: { s: new Map(), c: new Map(), u: new Map() },
         seen: new Set(),
         next: 0,
@@ -921,7 +924,12 @@ async function readOn(client: MudabClient, read: TableRead, maxPages: number, no
       table.c.push(idx(index.c, table.codes, r.PARAMCODE_PM ?? ""));
       table.u.push(idx(index.u, table.units, unitOf(r.PARAMETERID_PM)));
       table.d.push(Number(r.DATE_STM));
-      table.t.push(/^\d{4}$/.test(r.TIME_STM ?? "") ? Number(r.TIME_STM) : -1);
+      const hhmm = /^\d{4}$/.test(r.TIME_STM ?? "");
+      if (!hhmm && r.TIME_STM != null && r.TIME_STM.trim() !== "") {
+        table.oddTimes += 1;
+        table.oddTime ??= r.TIME_STM;
+      }
+      table.t.push(hhmm ? Number(r.TIME_STM) : -1);
       table.v.push(r.VALUE_MS);
     }
     read.next = page + 1;
@@ -1037,6 +1045,7 @@ export async function getMeasurements(client: MudabClient, input: GetMeasurement
   const notes: string[] = [];
   if (!table.complete) notes.push(partNote("measurements", maxPages));
   if (table.skipped > 0) notes.push(`${table.skipped} rows without a numeric value or a date were left out.`);
+  if (table.oddTimes > 0) notes.push(`${table.oddTimes} values have a time that isn't four digits HHMM (such as ${JSON.stringify(cutForMessage(table.oddTime ?? ""))}): their time is left out, the value and its day are kept.`);
   if (table.repeated > 0) notes.push(`The table repeats rows: ${table.repeated} of its ${table.rows} rows are exact copies of another and are counted once; counts are of distinct values.`);
 
   let code: number | undefined;

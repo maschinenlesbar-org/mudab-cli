@@ -461,6 +461,15 @@ test("the stations that measured a parameter: total counts series, and a note sa
   assert.doesNotMatch(surface.status === "ok" ? surface.notes.join(" ") : "", /series of/);
 });
 
+test("a value whose time isn't HHMM keeps its value and loses its time, said in notes", async () => {
+  const tables = sampleTables();
+  tables.measurements.push({ ...(tables.measurements[0] as (typeof tables.measurements)[number]), DATE_STM: "20200101", TIME_STM: "930", VALUE_MS: 7 });
+  const { client } = clientOn(tables);
+  const answer = await getMeasurements(client, { station: "OMMVZBA15", limit: 1, now: () => 0 });
+  assert.deepEqual(answer.status === "ok" && "values" in answer ? answer.values[0] : {}, { station: "OMMVZBA15", parameter: "SurTemp", unit: "degC", date: "2020-01-01", value: 7 });
+  assert.match(answer.status === "ok" ? answer.notes.join(" ") : "", /1 values have a time that isn't four digits HHMM \(such as "930"\): their time is left out/);
+});
+
 test("an offset past the end is an empty answer saying how many there are, never an ok with an empty list", async () => {
   const { client } = clientOn();
   const calls: [string, Promise<{ status: string; reason?: string }>][] = [
