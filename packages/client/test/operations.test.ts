@@ -470,6 +470,14 @@ test("a value whose time isn't HHMM keeps its value and loses its time, said in 
   assert.match(answer.status === "ok" ? answer.notes.join(" ") : "", /1 values have a time that isn't four digits HHMM \(such as "930"\): their time is left out/);
 });
 
+test("listRows refuses an unknown field after the first page, without reading the rest of the table", async () => {
+  const tables = sampleTables();
+  tables.projectStations = Array.from({ length: 20_001 }, (_, i) => ({ ...(tables.projectStations[i % 8] as (typeof tables.projectStations)[number]) }));
+  const { client, log } = clientOn(tables);
+  await assert.rejects(listRows(client, { table: "projectStations", field: "REGIO", value: "Ostsee" }), /has no column "REGIO"/);
+  assert.equal(log.of("PROJECTSTATION_SMALL"), 1, "one page, not two");
+});
+
 test("an offset past the end is an empty answer saying how many there are, never an ok with an empty list", async () => {
   const { client } = clientOn();
   const calls: [string, Promise<{ status: string; reason?: string }>][] = [

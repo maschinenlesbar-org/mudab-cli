@@ -1478,8 +1478,12 @@ export async function listRows(client: MudabClient, input: ListRowsInput): Promi
   const other = { kept: [] as Record<string, unknown>[], total: 0, spellings: new Set<string>() };
   let columns: string[] | undefined;
   const read = await readPages(fetch, PAGE_ROWS[table], maxPages, (rows) => {
+    // The first row names the columns: an unknown field is refused there, not after the whole table.
+    if (columns === undefined && rows.length > 0) {
+      columns = Object.keys(rows[0] as Record<string, unknown>);
+      if (!columns.includes(field)) throw new MudabValidationError(`Invalid field: ${TABLE_PATHS[table]} has no column ${JSON.stringify(cutForMessage(field))}; its columns are ${columns.join(", ")}.`);
+    }
     for (const row of rows) {
-      columns ??= Object.keys(row);
       const cell = row[field];
       if (cell === undefined || cell === null) continue;
       const text = String(cell).trim().normalize("NFC");
@@ -1492,9 +1496,6 @@ export async function listRows(client: MudabClient, input: ListRowsInput): Promi
   });
   if (read.rows === 0) throw noRows(pathOf(table, endpoint));
   if (!read.complete) notes.push(partNote(table, maxPages));
-  if (columns !== undefined && !columns.includes(field)) {
-    throw new MudabValidationError(`Invalid field: ${TABLE_PATHS[table]} has no column ${JSON.stringify(cutForMessage(field))}; its columns are ${columns.join(", ")}.`);
-  }
   const found = exact.total > 0 ? exact : other;
   if (found.total === 0) return { status: "empty", searched, reason: `No row of ${TABLE_PATHS[table]} has ${field} equal to ${JSON.stringify(value)} (any case). Check the value's spelling in a page of rows (without field).`, notes };
   if (offset >= found.total) return { status: "empty", searched, reason: pastEnd(offset, found.total, "rows"), notes };
