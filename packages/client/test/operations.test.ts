@@ -294,6 +294,25 @@ test("totals per kind add one parameter, per unit; without a parameter there is 
   assert.match(hg.status === "ok" ? hg.notes.join(" ") : "", /Units differ \(kg\/a, t\/a\): totals are per unit, never added across/);
 });
 
+test("totals over several years are the mean of the yearly totals, per year, with the years they span; never a sum of years", async () => {
+  const { client } = clientOn();
+  const byStation = await getRiverLoads(client, { parameter: "Ntot", by: "station" });
+  assert.deepEqual(byStation.status === "ok" && "totals" in byStation ? byStation.totals : [], [
+    { group: "ANKLAM (CDE0007)", unit: "t/a", meanPerYear: 2632.2026, years: 3, fromYear: "2023", toYear: "2025", count: 3 },
+    { group: "ROSTOCK (CDE0017)", unit: "t/a", meanPerYear: 1578.3592, years: 2, fromYear: "2023", toYear: "2024", count: 2 },
+    { group: "MOISLING (CDE0030)", unit: "t/a", meanPerYear: 1468.2781, years: 2, fromYear: "2023", toYear: "2024", count: 2 },
+    { group: "AN DER KALTENHÖFERSTRASSE (CDE0032)", unit: "t/a", sum: 300.4, years: 1, fromYear: "2023", toYear: "2023", count: 1 },
+  ]);
+  assert.match(byStation.status === "ok" ? byStation.notes.join(" ") : "", /the mean of its yearly totals \(meanPerYear, in the unit per year\).*never their sum/);
+  const byLand = await getRiverLoads(client, { parameter: "Ntot", by: "land", land: "MV" });
+  assert.deepEqual(byLand.status === "ok" && "totals" in byLand ? byLand.totals : [], [{ group: "MV", unit: "t/a", meanPerYear: 3684.4421, years: 3, fromYear: "2023", toYear: "2025", count: 5 }]);
+  const oneYear = await getRiverLoads(client, { parameter: "Ntot", by: "land", land: "MV", year: 2024 });
+  assert.deepEqual(oneYear.status === "ok" && "totals" in oneYear ? oneYear.totals : [], [{ group: "MV", unit: "t/a", sum: 4453.0263, count: 2 }]);
+  assert.doesNotMatch(oneYear.status === "ok" ? oneYear.notes.join(" ") : "", /meanPerYear/);
+  const byYear = await getRiverLoads(client, { parameter: "Ntot", by: "year" });
+  assert.deepEqual(byYear.status === "ok" && "totals" in byYear ? byYear.totals.map((t) => [t.group, t.sum]) : [], [["2025", 2600], ["2024", 5989.2826], ["2023", 5701]]);
+});
+
 test("parameter words resolve or are ambiguous; flow defaults to the flow gauges; a Land leaves out rows without one, said", async () => {
   const { client } = clientOn();
   const phosph = await getRiverLoads(client, { parameter: "phosph" });

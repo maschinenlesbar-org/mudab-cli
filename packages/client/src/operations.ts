@@ -1074,10 +1074,22 @@ export interface LoadRow {
   type?: string;
 }
 
+/**
+ * A total of one group and unit. The values are yearly (t/a, a year's mean flow in m3/s), so years
+ * are never added: within a year the group's rows are summed, and over several years the answer is
+ * the mean of those yearly totals.
+ */
 export interface LoadTotal {
   group: string;
   unit?: string;
-  sum: number;
+  /** The total, when the group's rows are of one year. */
+  sum?: number;
+  /** When the group's rows span several years: the mean of its yearly totals, in the unit (per year). */
+  meanPerYear?: number;
+  /** When the answer spans several years: the years the group has values in, and their span. */
+  years?: number;
+  fromYear?: string;
+  toYear?: string;
   count: number;
 }
 
@@ -1200,18 +1212,33 @@ export async function getRiverLoads(client: MudabClient, input: GetRiverLoadsInp
     return { status: "empty", searched, reason: `No PLC value matches ${what}. The values span ${years[0] ?? "?"}–${last ?? "?"}; try another kind (all), drop the river or Land, or widen the years.`, notes };
   }
   if (by !== undefined) {
-    const totals = new Map<string, LoadTotal>();
+    // Per group and unit, the total of each year: the values are yearly, so a sum over years (31
+    // yearly mean flows of the Peene "590 m3/s") would be no figure of the unit it carries.
+    const totals = new Map<string, { group: string; unit?: string; perYear: Map<string, number>; count: number }>();
     for (const r of rows) {
       const group = by === "station" ? `${r.station} (${r.code})` : by === "year" ? r.year : by === "kind" ? r.kind : (r.land ?? "");
       const key = `${group}|${r.unit ?? ""}`;
-      const entry = totals.get(key) ?? { group, ...(r.unit === undefined ? {} : { unit: r.unit }), sum: 0, count: 0 };
-      entry.sum += r.value;
+      const entry = totals.get(key) ?? { group, ...(r.unit === undefined ? {} : { unit: r.unit }), perYear: new Map<string, number>(), count: 0 };
+      entry.perYear.set(r.year, (entry.perYear.get(r.year) ?? 0) + r.value);
       entry.count += 1;
       totals.set(key, entry);
     }
-    const list = [...totals.values()]
-      .map((t) => ({ ...t, sum: round(t.sum) }))
-      .sort(by === "year" ? (a, b) => b.group.localeCompare(a.group) || (a.unit ?? "").localeCompare(b.unit ?? "") : (a, b) => b.sum - a.sum);
+    const spansYears = new Set(rows.map((r) => r.year)).size > 1 && by !== "year";
+    const list: LoadTotal[] = [...totals.values()].map(({ group, unit, perYear, count }) => {
+      const years = [...perYear.keys()].sort();
+      const yearly = [...perYear.values()];
+      const value = round(yearly.reduce((a, b) => a + b, 0) / (years.length > 1 ? years.length : 1));
+      return {
+        group,
+        ...(unit === undefined ? {} : { unit }),
+        ...(years.length > 1 ? { meanPerYear: value } : { sum: value }),
+        ...(spansYears ? { years: years.length, fromYear: years[0] as string, toYear: years.at(-1) as string } : {}),
+        count,
+      };
+    });
+    const valueOf = (t: LoadTotal): number => t.sum ?? t.meanPerYear ?? 0;
+    list.sort(by === "year" ? (a, b) => b.group.localeCompare(a.group) || (a.unit ?? "").localeCompare(b.unit ?? "") : (a, b) => valueOf(b) - valueOf(a));
+    if (spansYears) notes.push("The answer spans several years: a group's total is the mean of its yearly totals (meanPerYear, in the unit per year) over the years it has values (years, fromYear to toYear), never their sum; a group with one year gives that year's sum. Ask with year for one year's totals.");
     if (by === "year" && kind === "river") notes.push("A year's total adds the monitored rivers that reported that year; the number of rivers changes between years (count).");
     const { items, nextOffset } = page(list, offset, limit);
     return { status: "ok", searched, total: list.length, totals: items, ...stations, ...(nextOffset === undefined ? {} : { nextOffset }), notes };
