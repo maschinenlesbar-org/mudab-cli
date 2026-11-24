@@ -452,6 +452,15 @@ test("a server that ignores the range is an error a caller of the use cases can 
   await assert.rejects(client.plcStations({ range: { from: 0, count: 1 } }), /fetch the whole table \(\{ all: true \}; --all on the CLI\)/, "the client's own advice stays for its callers");
 });
 
+test("the stations that measured a parameter: total counts series, and a note says how many stations they are when a station has several units", async () => {
+  const { client } = clientOn();
+  const waves = await getMeasurements(client, { parameter: "WAVHT", now: () => 0 });
+  assert.equal(waves.status === "ok" && waves.total, 4);
+  assert.match(waves.status === "ok" ? waves.notes.join(" ") : "", /4 series of 3 stations: a station measured in several units is a series \(and listed\) once per unit; total counts series\./);
+  const surface = await getMeasurements(client, { parameter: "SurTemp", now: () => 0 });
+  assert.doesNotMatch(surface.status === "ok" ? surface.notes.join(" ") : "", /series of/);
+});
+
 test("an offset past the end is an empty answer saying how many there are, never an ok with an empty list", async () => {
   const { client } = clientOn();
   const calls: [string, Promise<{ status: string; reason?: string }>][] = [

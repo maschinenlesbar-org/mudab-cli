@@ -1124,6 +1124,8 @@ export async function getMeasurements(client: MudabClient, input: GetMeasurement
     const codeName = table.codes[code] as string;
     if (finished.length === 0) return { status: "empty", searched, reason: `No station has values of ${codeName}${range}. Widen the dates.`, notes };
     unitNote(finished);
+    const stationCount = new Set(finished.map((s) => s.station)).size;
+    if (stationCount < finished.length) notes.push(`${finished.length} series of ${stationCount} stations: a station measured in several units is a series (and listed) once per unit; total counts series.`);
     const sorted = finished.sort((a, b) => b.count - a.count || a.station.localeCompare(b.station));
     if (offset >= sorted.length) return { status: "empty", searched, reason: pastEnd(offset, sorted.length, "series"), notes };
     const { items, nextOffset } = page(sorted, offset, limit);
