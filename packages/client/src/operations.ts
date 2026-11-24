@@ -90,15 +90,16 @@ export interface PagesRead {
 }
 
 /**
- * Read a table page by page (`pageRows` rows each, one request after the other), handing each page
- * to `each`, until a page is short (the table's end) or `maxPages` pages are read. The server
+ * Read a table page by page (`pageRows` rows each, one request after the other, from page
+ * `firstPage`), handing each page and its number to `each`, until a page is short (the table's end)
+ * or the page `maxPages` would be next. The server
  * honours only the range, so this is how a whole table is read without one answer over the size cap.
  */
-export async function readPages<T>(fetch: Fetch<T>, pageRows: number, maxPages: number, each: (rows: T[]) => void): Promise<PagesRead> {
+export async function readPages<T>(fetch: Fetch<T>, pageRows: number, maxPages: number, each: (rows: T[], page: number) => void, firstPage = 0): Promise<PagesRead> {
   let rows = 0;
-  for (let page = 0; page < maxPages; page++) {
+  for (let page = firstPage; page < maxPages; page++) {
     const got = await fetch({ range: { from: page * pageRows, count: pageRows } });
-    each(got);
+    each(got, page);
     rows += got.length;
     if (got.length < pageRows) return { rows, pages: page + 1, complete: true };
   }
@@ -776,10 +777,25 @@ interface MeasurementTable {
   rows: number;
 }
 
-const tables = new WeakMap<MudabClient, { at: number; table: MeasurementTable }>();
+/**
+ * A read of the measurement table, kept per client: done (the cache), or in part (the pages read so
+ * far), to go on with at the next call.
+ */
+interface TableRead {
+  /** A done read is kept MEASUREMENTS_CACHE_MS from its end; a read in part as long from its start. */
+  at: number;
+  table: MeasurementTable;
+  index: { s: Map<string, number>; c: Map<string, number>; u: Map<string, number> };
+  /** The rows seen, field for field, so a repeated one is counted once. */
+  seen: Set<string>;
+  /** The next page to read. */
+  next: number;
+  done: boolean;
+  /** The read under way, which a second call joins. */
+  pending?: Promise<void> | undefined;
+}
 
-/** The read of the measurement table under way per client, which a second call joins. */
-const reading = new WeakMap<MudabClient, Promise<MeasurementTable>>();
+const reads = new WeakMap<MudabClient, TableRead>();
 
 /**
  * The unit in a row's method id (PARAMETERID_PM, "APSurTemp THRNFNON degC IFAG": the token before
@@ -795,32 +811,41 @@ export function unitOf(parameterId: string | undefined): string {
  * The measurement table: from the client's cache when younger than MEASUREMENTS_CACHE_MS, else
  * read in pages. Calls at once share one read (a model's parallel calls would each download the
  * ~42 MB); when that read fails for the call that started it (cancelled, at its deadline), a call
- * that joined it reads on its own.
+ * that joined it reads on its own. The pages a failed read got are kept: the next read goes on
+ * where it stopped, so a table that takes longer than one call's deadline is read over several calls
+ * instead of from page 0 each time.
  */
 async function measurementTable(client: MudabClient, maxPages: number, now: () => number): Promise<MeasurementTable> {
   for (;;) {
-    const cached = tables.get(client);
-    if (cached !== undefined && now() - cached.at < MEASUREMENTS_CACHE_MS) return cached.table;
-    const pending = reading.get(client);
-    if (pending !== undefined) {
-      try {
-        return await pending;
-      } catch {
-        continue;
-      }
+    let read = reads.get(client);
+    if (read !== undefined && read.pending === undefined && now() - read.at >= MEASUREMENTS_CACHE_MS) read = undefined;
+    if (read === undefined) {
+      read = {
+        at: now(),
+        table: { stations: [], codes: [], units: [], s: [], c: [], u: [], d: [], t: [], v: [], complete: false, skipped: 0, repeated: 0, rows: 0 },
+        index: { s: new Map(), c: new Map(), u: new Map() },
+        seen: new Set(),
+        next: 0,
+        done: false,
+      };
+      reads.set(client, read);
     }
-    const read = readMeasurementTable(client, maxPages, now).finally(() => {
-      if (reading.get(client) === read) reading.delete(client);
+    if (read.done) return read.table;
+    if (read.pending !== undefined) {
+      await read.pending.catch(() => undefined);
+      continue;
+    }
+    const own = read;
+    own.pending = readOn(client, own, maxPages, now).finally(() => {
+      own.pending = undefined;
     });
-    reading.set(client, read);
-    return await read;
+    await own.pending;
   }
 }
 
-/** One read of the measurement table, in pages, into the client's cache. */
-async function readMeasurementTable(client: MudabClient, maxPages: number, now: () => number): Promise<MeasurementTable> {
-  const table: MeasurementTable = { stations: [], codes: [], units: [], s: [], c: [], u: [], d: [], t: [], v: [], complete: false, skipped: 0, repeated: 0, rows: 0 };
-  const index = { s: new Map<string, number>(), c: new Map<string, number>(), u: new Map<string, number>() };
+/** Read the measurement table on from `read.next` into `read`, page by page, until its end or maxPages. */
+async function readOn(client: MudabClient, read: TableRead, maxPages: number, now: () => number): Promise<void> {
+  const { table, index, seen } = read;
   const idx = (map: Map<string, number>, list: string[], key: string): number => {
     let i = map.get(key);
     if (i === undefined) {
@@ -831,8 +856,7 @@ async function readMeasurementTable(client: MudabClient, maxPages: number, now: 
   };
   // The table repeats most rows several times (187,707 rows, about 37,000-40,000 distinct on
   // 2026-11-19): a row seen before, field for field, is counted once.
-  const seen = new Set<string>();
-  const read = await readPages<ParameterValue>((req) => client.measurements(req), PAGE_ROWS.measurements, maxPages, (rows) => {
+  const pages = await readPages<ParameterValue>((req) => client.measurements(req), PAGE_ROWS.measurements, maxPages, (rows, page) => {
     checkRows("measurements", TABLE_PATHS.measurements, rows as Record<string, unknown>[]);
     for (const r of rows) {
       table.rows += 1;
@@ -853,11 +877,15 @@ async function readMeasurementTable(client: MudabClient, maxPages: number, now: 
       table.t.push(/^\d{4}$/.test(r.TIME_STM ?? "") ? Number(r.TIME_STM) : -1);
       table.v.push(r.VALUE_MS);
     }
-  });
-  if (read.rows === 0) throw noRows(TABLE_PATHS.measurements);
-  table.complete = read.complete;
-  tables.set(client, { at: now(), table });
-  return table;
+    read.next = page + 1;
+  }, read.next);
+  if (table.rows === 0) {
+    reads.delete(client);
+    throw noRows(TABLE_PATHS.measurements);
+  }
+  table.complete = pages.complete;
+  read.done = true;
+  read.at = now();
 }
 
 export interface GetMeasurementsInput {

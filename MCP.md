@@ -75,7 +75,8 @@ For scripts and shared configs, pin a release and its digest from the
 MUDAB filters nothing on the server, so each tool reads its table (in pages of at most ~7 MB) and
 selects there. The station measurement table is ~42 MB: the first call that needs it takes about 20
 s, and the table is then kept in memory for 15 minutes; calls that need it at the same time share
-one read. Stations are counted by name, not by table
+one read, and a read cut off by a call's deadline keeps its pages, so calling again goes on where it
+stopped. Stations are counted by name, not by table
 row, and the measurement table's exact copies of a row (it repeats most rows) once; units are kept
 apart (a wave height in metres is never compared with one on a scale); null values are dropped and
 counted.

@@ -253,6 +253,36 @@ test("two calls at once share one read of the measurement table", async () => {
   assert.equal(log.of("MV_STATION_MSMNT"), 1, "one read for both");
 });
 
+test("a measurement table read that fails keeps its pages: the next call goes on where it stopped", async () => {
+  // Three pages (30,000 rows each), the second failing once (a call's deadline, a reset).
+  const tables = sampleTables();
+  const filler = tables.measurements[0] as (typeof tables.measurements)[number];
+  tables.measurements = [...tables.measurements, ...Array.from({ length: 60_000 }, (_, i) => ({ ...filler, DATE_STM: String(19_900_101 + (i % 28)) }))];
+  const log = apiLog();
+  const api = mudabApi(tables, log);
+  let failures = 1;
+  const transport = async (req: Parameters<typeof api>[0]) => {
+    if (failures > 0 && JSON.parse(String(req.body)).range?.from === 30_000) {
+      failures -= 1;
+      throw new Error("socket hang up");
+    }
+    return api(req);
+  };
+  const client = new MudabClient({ transport, maxRetries: 0 });
+  await assert.rejects(getMeasurements(client, { now: () => 0 }), /socket hang up/);
+  assert.deepEqual(log.requests.map((r) => r.from), [0], "the failed page isn't logged by the mock");
+  const answer = await getMeasurements(client, { parameter: "SurTemp", now: () => 0 });
+  assert.equal(answer.status, "ok");
+  assert.deepEqual(log.requests.map((r) => r.from), [0, 30_000, 60_000], "page 0 isn't read again");
+  assert.match(answer.status === "ok" ? answer.notes.join(" ") : "", new RegExp(`of its ${tables.measurements.length} rows`), "every row counted once");
+  // Two calls at once: the one that joined goes on by itself when the read fails for the other.
+  failures = 1;
+  const fresh = new MudabClient({ transport, maxRetries: 0 });
+  const [a, b] = await Promise.allSettled([getMeasurements(fresh, { now: () => 0 }), getMeasurements(fresh, { now: () => 0 })]);
+  assert.equal(a.status, "rejected");
+  assert.equal(b.status === "fulfilled" && b.value.status, "ok");
+});
+
 test("the unit is the method id's token before the institute, or none", () => {
   assert.equal(unitOf("APSurTemp THRNFNON degC IFAG"), "degC");
   assert.equal(unitOf("2D 25 25 APWINDD 151 NFNON _Grad BSHG"), "_Grad");

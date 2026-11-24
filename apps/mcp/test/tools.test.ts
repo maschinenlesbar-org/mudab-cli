@@ -10,13 +10,65 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { listTools } from "../src/mcp/server.js";
+import { TOOLS } from "../src/mcp/tools.js";
+import { limitTransport } from "../src/mcp/limiter.js";
 import { connect } from "./harness.js";
-import { mudab } from "./helpers.js";
+import type { HttpRequest } from "../src/mcp/api.js";
+import { apiLog, makeMockTransport, mudab, mudabApi, sampleTables } from "./helpers.js";
 
 const BASE = "https://geoportal.bafg.de/mudab/rest/BaseController/FilterElements";
 
 test("five tools: stations, parameters, measurements, river loads, then the raw rows", () => {
   assert.deepEqual(listTools().map((t) => t.name), ["findStations", "findParameters", "getMeasurements", "getRiverLoads", "listRows"]);
+});
+
+/** The options a hint names as "option or option (tool, tool)", each checked against those tools' input schemas. */
+function assertOptionsFit(text: string): void {
+  const schemas = new Map(TOOLS.map((tool) => [tool.name, Object.keys((tool.inputSchema as { properties: Record<string, unknown> }).properties)]));
+  const pairs = [...text.matchAll(/(\w+(?: or \w+)*) \((\w+(?:, \w+)*)\)/g)];
+  assert.ok(pairs.length >= 1, text);
+  for (const [, options, tools] of pairs) {
+    for (const tool of (tools as string).split(", ")) {
+      assert.ok(schemas.has(tool), `${tool} is no tool: ${text}`);
+      for (const option of (options as string).split(" or ")) assert.ok(schemas.get(tool)?.includes(option), `${tool} takes no ${option}: ${text}`);
+    }
+  }
+}
+
+test("a measurement table read cut off by the call deadline goes on at the next call, and the advice says so and fits the tools", async () => {
+  // Three pages of 30,000 rows; the second one doesn't answer the first time until the call's
+  // signal aborts it (at the deadline), as the default transport does.
+  const tables = sampleTables();
+  const filler = tables.measurements[0] as (typeof tables.measurements)[number];
+  tables.measurements = [...tables.measurements, ...Array.from({ length: 60_000 }, (_, i) => ({ ...filler, DATE_STM: String(19_900_101 + (i % 28)) }))];
+  const log = apiLog();
+  const api = mudabApi(tables, log);
+  let hang = true;
+  const transport = makeMockTransport((req: HttpRequest) => {
+    if (hang && JSON.parse(String(req.body)).range?.from === 30_000) {
+      hang = false;
+      return new Promise((_, reject) => req.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true }));
+    }
+    return api(req);
+  });
+  // The limiter, as the server runs it, gives each request the call's signal.
+  const connection = await connect({ transport: { transport: limitTransport(transport.transport) }, config: { callTimeoutMs: 1000 } });
+  let text = "";
+  let answer: Record<string, unknown> = {};
+  try {
+    const stopped = await connection.call("getMeasurements", {});
+    assert.equal(stopped.isError, true);
+    text = stopped.content[0]?.text ?? "";
+    const second = await connection.call("getMeasurements", { parameter: "SurTemp" });
+    answer = second.structuredContent ?? { error: second.content[0]?.text };
+  } finally {
+    await connection.close();
+  }
+  assert.match(text, /took longer than .* and was stopped/);
+  assert.match(text, /getMeasurements keeps the pages .* goes on where it stopped/);
+  assertOptionsFit(text);
+  assert.equal(answer["status"], "ok", JSON.stringify(answer));
+  assert.deepEqual(log.requests.map((r) => r.from), [0, 30_000, 60_000], "page 0 is read once");
 });
 
 test("findStations: stations once by name, regions from the project station, conflicts kept; the source and the terms in the result", async () => {
