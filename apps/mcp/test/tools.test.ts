@@ -81,7 +81,10 @@ test("getRiverLoads: rivers ranked, unmonitored areas only when asked, totals pe
   assert.deepEqual((content["rows"] as { river: string; value: number; unit: string }[]).map((r) => [r.river, r.value, r.unit]), [["PEENE", 2796.507925, "t/a"], ["WARNOW", 1656.518409, "t/a"]]);
   assert.equal(content["total"], 3);
   assert.equal(content["nextOffset"], 2);
-  assert.match((content["notes"] as string[]).join(" "), /no value \(null\).*2025 looks incomplete/);
+  assert.match((content["notes"] as string[]).join(" "), /no value \(null\)/);
+  assert.doesNotMatch((content["notes"] as string[]).join(" "), /2025 looks incomplete/, "the answer has no 2025 row");
+  const latest = (await connection.call("getRiverLoads", { parameter: "nitrogen", limit: 1 })).structuredContent ?? {};
+  assert.match((latest["notes"] as string[]).join(" "), /2025 looks incomplete/);
   assert.equal(content["source"], `${BASE}/V_MESSWERTE_PLC`);
   const byKind = (await connection.call("getRiverLoads", { parameter: "Ntot", year: 2024, kind: "all", by: "kind" })).structuredContent ?? {};
   assert.deepEqual((byKind["totals"] as { group: string }[]).map((t) => t.group), ["monitored river load", "unmonitored area (pseudo-station)", "municipal treatment plant"]);

@@ -1161,16 +1161,20 @@ export async function getRiverLoads(client: MudabClient, input: GetRiverLoadsInp
   }
   if (nulls > 0) notes.push(`${nulls} matching rows have no value (null) and are left out of the rows and every total.`);
   if (noLand > 0) notes.push(`${noLand} matching rows have no Land (XX) and are left out; ask without land to see them.`);
-  // The latest year with far fewer rows than the year before is still being filled.
+  // The latest year with far fewer rows than the year before is still being filled (counted over
+  // the parameter and kind, before the river, Land and year filters); said when the answer has it.
   const years = [...rowsPerYear.keys()].filter((y) => /^\d{4}$/.test(y)).sort();
   const last = years.at(-1);
   const before = years.at(-2);
-  if (last !== undefined && before !== undefined && (rowsPerYear.get(last) ?? 0) < 0.75 * (rowsPerYear.get(before) ?? 0)) {
+  if (last !== undefined && before !== undefined && (rowsPerYear.get(last) ?? 0) < 0.75 * (rowsPerYear.get(before) ?? 0) && rows.some((r) => r.year === last)) {
     notes.push(`${last} looks incomplete (${rowsPerYear.get(last)} rows against ${rowsPerYear.get(before)} for ${before}): don't compare it with full years.`);
   }
   const units = uniq(rows.map((r) => r.unit));
   if (units.length > 1) {
-    notes.push(`Units differ (${units.join(", ")}): totals are per unit, never added across. Rows marked kg/a (the 2014 river loads, some unmonitored-area years) are of the same size as the t/a values of other years, so their unit label may be wrong: say so before comparing.`);
+    const doubtful = units.includes("kg/a") && units.includes("t/a")
+      ? " Rows marked kg/a (the 2014 river loads, some unmonitored-area years) are of the same size as the t/a values of other years, so their unit label may be wrong: say so before comparing."
+      : "";
+    notes.push(`Units differ (${units.join(", ")}): totals are per unit, never added across.${doubtful}`);
   }
   // The stations the answer comes from, named when they are few.
   const named = uniq(rows.map((r) => `${r.station} (${r.code}${r.river === undefined ? "" : `, ${r.river}`})`));

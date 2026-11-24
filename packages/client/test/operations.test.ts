@@ -250,8 +250,22 @@ test("river loads: monitored rivers by default, ranked; nulls dropped and counte
   const notes = answer.notes.join(" ");
   assert.match(notes, /Monitored river loads only \(kind river\)/);
   assert.match(notes, /1 matching rows have no value \(null\)/);
-  assert.match(notes, /2025 looks incomplete \(1 rows against 4 for 2024\)/);
+  assert.doesNotMatch(notes, /2025 looks incomplete/, "the answer has no 2025 row");
   assert.deepEqual(log.requests, [{ table: "V_MESSWERTE_PLC", from: 0, count: 25_000 }]);
+  const all = await getRiverLoads(client, { parameter: "Ntot" });
+  assert.match(all.status === "ok" ? all.notes.join(" ") : "", /2025 looks incomplete \(1 rows against 4 for 2024\)/);
+});
+
+test("river-load notes speak of the rows answered: no incomplete-year note without that year, no kg/a note without kg/a rows", async () => {
+  const { client } = clientOn();
+  const span = await getRiverLoads(client, { parameter: "Ntot", river: "Peene", fromYear: 2012, toYear: 2024, by: "year" });
+  assert.doesNotMatch(span.status === "ok" ? span.notes.join(" ") : "", /looks incomplete/);
+  const flow = await getRiverLoads(client, { parameter: "FLOW", kind: "all", by: "kind" });
+  const notes = flow.status === "ok" ? flow.notes.join(" ") : "";
+  assert.match(notes, /Units differ \(m3\/a, m3\/s\): totals are per unit, never added across/);
+  assert.doesNotMatch(notes, /kg\/a/);
+  const hg = await getRiverLoads(client, { parameter: "Hg", by: "year" });
+  assert.match(hg.status === "ok" ? hg.notes.join(" ") : "", /Rows marked kg\/a/);
 });
 
 test("totals per kind add one parameter, per unit; without a parameter there is no total", async () => {
