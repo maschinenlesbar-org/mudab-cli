@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { listTools } from "../src/mcp/server.js";
-import { TOOLS } from "../src/mcp/tools.js";
+import { SIZE_HINT, TOOLS } from "../src/mcp/tools.js";
 import { limitTransport } from "../src/mcp/limiter.js";
 import { connect } from "./harness.js";
 import type { HttpRequest } from "../src/mcp/api.js";
@@ -71,7 +71,7 @@ test("a measurement table read cut off by the call deadline goes on at the next 
   assert.deepEqual(log.requests.map((r) => r.from), [0, 30_000, 60_000], "page 0 is read once");
 });
 
-test("an answer over a size cap says what helps, and that nothing does when MUDAB's own page is too large", async () => {
+test("an answer from MUDAB over the read limit says that no argument helps, without the result cap's advice", async () => {
   const huge = makeMockTransport(() => rawResponse(Buffer.alloc(17 * 1024 * 1024, 32), "application/json"));
   const connection = await connect({ transport: huge });
   const result = await connection.call("findStations", { kind: "plc", limit: 1 });
@@ -79,8 +79,10 @@ test("an answer over a size cap says what helps, and that nothing does when MUDA
   assert.equal(result.isError, true);
   const text = result.content[0]?.text ?? "";
   assert.match(text, /larger than this server accepts \(16 MiB\)/);
-  assert.match(text, /MUDAB's own pages are of a fixed size .* no argument helps/);
-  assertOptionsFit(text);
+  assert.match(text, /the source's answer is over the read limit, and narrower options of findStations don't help/);
+  assert.doesNotMatch(text, /smaller limit/);
+  // The result cap's advice names options its tools take.
+  assertOptionsFit(SIZE_HINT);
 });
 
 test("findStations: stations once by name, regions from the project station, conflicts kept; the source and the terms in the result", async () => {
