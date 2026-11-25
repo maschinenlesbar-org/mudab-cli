@@ -245,7 +245,10 @@ to the CLI's own. Files:
   `apps/cli/test/retry-log.test.ts`.
 - **The engine enforces the transport contract** for any transport, not only the
   built-in one: it runs each call under the `timeoutMs` deadline (passing an
-  `AbortSignal` as `HttpRequest.signal`, which the built-in transport honours), checks
+  `AbortSignal` as `HttpRequest.signal`, aborted with the timeout error as its reason, which
+  the built-in transport honours: it stops with that reason, and for a signal some other
+  caller aborted (the MCP server's tool call: its deadline, a cancellation) it says "Request
+  aborted by its caller before it finished", never a timeout it didn't have), checks
   the body size against `maxResponseBytes` after the call, reads headers from a
   `Headers` object, a `Map` or any key case (`plainHeaders`), takes any ArrayBuffer view
   or ArrayBuffer as the body (`bodyBytes`), and turns a malformed response (no or a
