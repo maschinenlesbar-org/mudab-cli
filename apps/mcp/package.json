@@ -1,6 +1,6 @@
 {
   "name": "@maschinenlesbar.org/mudab-mcp",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "MCP server for MUDAB (Meeresumweltdatenbank), Germany's marine-monitoring database of the North and Baltic Sea: stations, parameters, station measurements and HELCOM river loads, for AI agents (stdio and Streamable HTTP)",
   "type": "module",
   "bin": {
